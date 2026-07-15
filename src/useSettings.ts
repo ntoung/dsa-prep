@@ -3,7 +3,7 @@ import type { Difficulty } from './types'
 
 const SETTINGS_KEY = 'dsa-prep:settings'
 
-export const CODE_FONT_SIZES = [12, 14, 16, 18, 20] as const
+export const CODE_FONT_SIZES = [10, 12, 14, 16, 18, 20] as const
 const DEFAULT_CODE_FONT_SIZE = 14
 
 export const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard']

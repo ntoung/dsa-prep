@@ -16,6 +16,7 @@ interface SettingsViewProps {
 }
 
 const SIZE_LABELS: Record<number, string> = {
+  10: 'XS',
   12: 'S',
   14: 'M',
   16: 'L',

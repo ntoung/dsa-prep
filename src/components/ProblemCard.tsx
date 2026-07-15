@@ -117,10 +117,7 @@ export function ProblemCard({
           </div>
           <h2 className="card-title">{problem.title}</h2>
           <p className="card-category">{problem.category}</p>
-          <pre
-            className="solution-code card-solution"
-            onPointerDownCapture={(e) => e.stopPropagation()}
-          >
+          <pre className="solution-code card-solution">
             <code>{problem.solutionCode}</code>
           </pre>
           <p className="card-flip-hint">Tap card for explanation</p>
