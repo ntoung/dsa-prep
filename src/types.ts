@@ -1,5 +1,7 @@
 export type Difficulty = 'Easy' | 'Medium' | 'Hard'
 
+export type Tab = 'swipe' | 'learn' | 'stats' | 'settings'
+
 export interface Problem {
   id: string
   title: string
@@ -7,6 +9,7 @@ export interface Problem {
   difficulty: Difficulty
   url: string
   pattern: string
+  summary: string
   approachSummary: string
   walkthrough: string
   complexity: {
@@ -16,7 +19,7 @@ export interface Problem {
   pitfalls: string[]
   solutionCode: string
   // Author-side: set by the generation pipeline's hitl step. Distinct from
-  // the reader's own personal "reviewed" tracking (see useReviewedSet).
+  // the reader's own personal "reviewed" tracking (see useReviewState).
   needsReview: boolean
   reviewReason: string
 }

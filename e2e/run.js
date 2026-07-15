@@ -62,6 +62,36 @@ async function check(page, selector, label, timeoutMs = 10000) {
   console.log(`PASS: ${label}`)
 }
 
+async function gotoWithRetry(page, url, checkSelector, label) {
+  let loaded = false
+  for (let attempt = 1; attempt <= 3 && !loaded; attempt++) {
+    await page.goto(url, { waitUntil: 'domcontentloaded' })
+    try {
+      await page.locator(checkSelector).first().waitFor({ state: 'visible', timeout: 20000 })
+      loaded = true
+    } catch {
+      console.log(`${label} attempt ${attempt} didn't come up in time, retrying...`)
+    }
+  }
+  if (!loaded) throw new Error(`${label} did not load (tunnel connection issue)`)
+  console.log(`PASS: ${label}`)
+}
+
+async function reloadWithRetry(page, checkSelector, label) {
+  let loaded = false
+  for (let attempt = 1; attempt <= 3 && !loaded; attempt++) {
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    try {
+      await page.locator(checkSelector).first().waitFor({ state: 'visible', timeout: 20000 })
+      loaded = true
+    } catch {
+      console.log(`Reload attempt ${attempt} didn't come up in time, retrying...`)
+    }
+  }
+  if (!loaded) throw new Error('App did not remount after reload (tunnel connection issue)')
+  console.log(`PASS: ${label}`)
+}
+
 async function main() {
   if (!process.env.BROWSERBASE_API_KEY) {
     throw new Error('BROWSERBASE_API_KEY is not set (check .env)')
@@ -78,49 +108,104 @@ async function main() {
   const context = browser.contexts()[0]
   const page = context.pages()[0]
   await context.setExtraHTTPHeaders({ 'bypass-tunnel-reminder': 'true' })
+  await page.setViewportSize({ width: 390, height: 844 })
 
   try {
-    await page.goto(tunnel.url, { waitUntil: 'domcontentloaded' })
-    await check(page, 'h1:has-text("NeetCode 150 Review")', 'App loads')
+    await gotoWithRetry(page, tunnel.url, '.problem-card', 'Swipe view loads (default tab)')
 
-    await page.fill('.app-search', 'Contains Duplicate')
-    await check(page, '.problem-row-title:has-text("Contains Duplicate")', 'Search finds "Contains Duplicate"')
-    const rowCount = await page.locator('.problem-row').count()
-    if (rowCount !== 1) throw new Error(`Expected 1 problem row after search, got ${rowCount}`)
-    console.log('PASS: search narrows the list to a single match')
+    await check(page, '.card-title:has-text("Contains Duplicate")', 'First due card shows "Contains Duplicate"')
 
-    await page.click('.problem-row:has-text("Contains Duplicate")')
-    await check(page, 'h2:has-text("Contains Duplicate")', 'Selecting a row shows its detail panel')
+    await page.click('.problem-card')
+    await check(page, '.card-back h3:has-text("Approach")', 'Tapping the card flips to the explanation')
+    await page.locator('.swipe-actions').waitFor({ state: 'hidden', timeout: 3000 })
+    console.log('PASS: Icon overlay hides while the card is flipped (would otherwise cover the text)')
 
-    await page.click('.reveal-button')
-    await check(page, 'text=Approach', 'Revealing the solution shows the approach section')
+    await page.click('.problem-card')
+    await check(page, '.swipe-actions', 'Tapping again flips back and the icon overlay reappears')
 
-    const progressBefore = await page.textContent('.app-progress')
-    await page.click('.reviewed-toggle')
-    await check(page, '.reviewed-toggle.active:has-text("Reviewed")', 'Toggle switches to the Reviewed state')
-    const progressAfter = await page.textContent('.app-progress')
-    if (progressBefore === progressAfter) {
-      throw new Error(`Expected the progress count to change, stayed at "${progressAfter.trim()}"`)
+    await page.click('.swipe-actions .icon-button-positive')
+    await check(
+      page,
+      'button[aria-label="Undo last swipe"]',
+      'Swiping "Reviewed" advances the deck and reveals Undo on the card',
+    )
+    await check(page, '.card-title:has-text("Valid Anagram")', 'Next card in the deck is shown')
+
+    await page.click('button[aria-label="Undo last swipe"]')
+    await check(page, '.card-title:has-text("Contains Duplicate")', 'Clicking Undo actually reverts to the previous card')
+
+    // Undo also reverted today's review count - redo the swipe so the rest of
+    // this test's assumptions (1 reviewed, todayCount 1) hold.
+    await page.click('.swipe-actions .icon-button-positive')
+    await check(page, '.card-title:has-text("Valid Anagram")', 'Re-reviewing after undo advances the deck again')
+
+    await page.click('.bottom-nav-item[aria-label="Stats"]')
+    await check(page, '.stats-streak-number:has-text("1")', 'Stats: streak is 1 day')
+    await check(page, '.stats-card:has-text("Total reviewed") span:has-text("1 / 150")', 'Stats: total reviewed is 1 / 150')
+
+    await page.click('.bottom-nav-item[aria-label="Settings"]')
+    await check(page, '.settings-size-pills', 'Settings tab loads')
+    await page.click('.settings-size-pills button:has-text("S")')
+    const previewFontSize = await page.locator('.settings-preview code').evaluate((el) => getComputedStyle(el).fontSize)
+    if (previewFontSize !== '12px') {
+      throw new Error(`Expected preview font-size 12px after selecting "S", got ${previewFontSize}`)
     }
-    console.log(`PASS: progress count updated (${progressBefore.trim()} -> ${progressAfter.trim()})`)
+    console.log('PASS: Selecting "S" sets code font-size to 12px')
 
-    await check(page, '.problem-row.selected .reviewed-check', 'Checkmark appears on the reviewed row')
-
-    // localtunnel's free tier occasionally drops the connection on a fresh reload,
-    // so retry the reload itself rather than just the element wait.
-    let reloaded = false
-    for (let attempt = 1; attempt <= 3 && !reloaded; attempt++) {
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      try {
-        await page.locator('h1:has-text("NeetCode 150 Review")').first().waitFor({ state: 'visible', timeout: 8000 })
-        reloaded = true
-      } catch {
-        console.log(`Reload attempt ${attempt} didn't come up in time, retrying...`)
-      }
+    await page.click('.bottom-nav-item[aria-label="Swipe"]')
+    const cardFontSize = await page
+      .locator('.card-solution code')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontSize)
+    if (cardFontSize !== '12px') {
+      throw new Error(`Expected the swipe card's code font-size to follow the setting (12px), got ${cardFontSize}`)
     }
-    if (!reloaded) throw new Error('App did not remount after reload (tunnel connection issue)')
-    console.log('PASS: App remounts after reload')
-    await check(page, '.reviewed-toggle.active:has-text("Reviewed")', 'Reviewed state persists across reload')
+    console.log('PASS: Font-size setting applies to the swipe card too')
+
+    await page.click('.bottom-nav-item[aria-label="Settings"]')
+    const difficultyCard = page.locator('.stats-card:has-text("Review difficulty")')
+    await difficultyCard.locator('button:has-text("Medium")').click()
+    await difficultyCard.locator('button:has-text("Hard")').click()
+    const enabledDifficulties = await page.evaluate(() => {
+      const raw = localStorage.getItem('dsa-prep:settings')
+      return raw ? JSON.parse(raw).enabledDifficulties : null
+    })
+    if (JSON.stringify(enabledDifficulties) !== JSON.stringify(['Easy'])) {
+      throw new Error(`Expected only "Easy" enabled, got ${JSON.stringify(enabledDifficulties)}`)
+    }
+    console.log('PASS: Deselecting Medium and Hard leaves only Easy enabled in settings')
+
+    // Lower the daily goal to just above the current today-count (1, from the
+    // earlier "Mark reviewed" swipe) so the very next review action crosses it.
+    await page.evaluate(() => {
+      const raw = localStorage.getItem('dsa-prep:settings')
+      const parsed = raw ? JSON.parse(raw) : {}
+      parsed.dailyGoal = 2
+      localStorage.setItem('dsa-prep:settings', JSON.stringify(parsed))
+    })
+    await reloadWithRetry(page, '.problem-card', 'App reloads with the lowered daily goal')
+    await page.click('.swipe-actions .icon-button-positive')
+    await check(page, '.goal-toast:has-text("Daily goal reached")', 'Goal toast appears the moment the goal is crossed')
+    await page.locator('.goal-toast').waitFor({ state: 'hidden', timeout: 4000 })
+    console.log('PASS: Goal toast auto-dismisses after a few seconds')
+
+    await page.click('.bottom-nav-item[aria-label="Learn"]')
+    await check(page, '.view-title:has-text("Learn")', 'Learn: page title renders')
+    await check(page, '.learn-card-header:has-text("Arrays & Hashing")', 'Learn: category list renders')
+    await page.click('.learn-card-header:has-text("Arrays & Hashing")')
+    await check(page, '.learn-card-body h3:has-text("Recognize it")', 'Learn: expanding a category shows its lesson')
+
+    await page.click('.bottom-nav-item[aria-label="Stats"]')
+    await check(page, '.view-title:has-text("Stats")', 'Stats: page title renders')
+    await check(
+      page,
+      '.category-stat-row:has-text("Arrays & Hashing") .heatmap-cell.level-1',
+      'Stats: coverage heatmap shows a colored cell for the reviewed problem',
+    )
+
+    await reloadWithRetry(page, '.bottom-nav-item', 'App remounts after reload')
+    await page.click('.bottom-nav-item[aria-label="Stats"]')
+    await check(page, '.stats-card:has-text("Total reviewed") span:has-text("1 / 150")', 'Reviewed state persists across reload')
 
     console.log('\nAll E2E checks passed.')
   } finally {
