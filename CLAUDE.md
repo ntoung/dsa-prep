@@ -25,6 +25,8 @@ Each is written so that reading it equips you to solve *any* problem in that cat
 This replaced an earlier "Browse" search/list tab that was judged redundant with Swipe.
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
 - **Settings** — code font size (including an XS 10px option), daily goal, and difficulty filter, via `useSettings.ts`.
+Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
+This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `VITE_FEEDBACK_ENDPOINT` isn't set.
 
 **Data:** `src/data/problems.json` holds all 150 problems, each with a full write-up — summary, approach, walkthrough, complexity, pitfalls, and a Python solution.
 

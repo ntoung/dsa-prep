@@ -1,6 +1,7 @@
 import { Minus, Plus } from 'lucide-react'
 import { CODE_FONT_SIZES, DIFFICULTIES } from '../useSettings'
 import type { useSettings } from '../useSettings'
+import { FeedbackForm } from './FeedbackForm'
 
 const SAMPLE_CODE = `def contains_duplicate(nums: list[int]) -> bool:
     seen = set()
@@ -97,6 +98,8 @@ export function SettingsView({ settings }: SettingsViewProps) {
           ))}
         </div>
       </div>
+
+      <FeedbackForm />
     </div>
   )
 }
