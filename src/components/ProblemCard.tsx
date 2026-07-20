@@ -88,6 +88,7 @@ export function ProblemCard({
       style={{ x, rotate, zIndex: 100 - stackDepth }}
       drag={isTop ? 'x' : false}
       dragElastic={0.6}
+      dragConstraints={{ left: 0, right: 0 }}
       onDragEnd={handleDragEnd}
       onTap={toggleFlipped}
       initial={{ scale: 1 - stackDepth * 0.04, y: stackDepth * 12, opacity: stackDepth > 2 ? 0 : 1 }}
