@@ -11,7 +11,7 @@ Swipe left to mark a problem reviewed, swipe right to revisit it later, tap to f
 No emoji in the UI — this was deliberately replaced early on for cross-platform rendering consistency.
 - Single `src/App.css` with CSS custom properties for theming (light/dark via `prefers-color-scheme`).
 No CSS framework.
-- Deployed to Cloudflare Workers via `wrangler` (`@cloudflare/vite-plugin` in `vite.config.ts`, `npm run deploy`, `npm run preview` runs `wrangler dev`).
+- Deployed to Cloudflare Pages, git-integrated (Cloudflare builds and deploys automatically on push to `main`; no local deploy script or `wrangler`). Build command `npm run build`, output directory `dist`. `npm run preview` runs `vite preview` for a local look at the production build. Client-side env vars for Production/Preview must be set in the Cloudflare Pages dashboard, not just a local `.env` — see `FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` in `.env.example`.
 
 ## Architecture
 
@@ -31,7 +31,8 @@ This tab is read-only reference and never writes to the spaced-repetition review
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
 - **Settings** — code font size (including an XS 10px option), daily goal, and difficulty filter, via `useSettings.ts`.
 Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
-This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `VITE_FEEDBACK_ENDPOINT` isn't set.
+This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `FEEDBACK_ENDPOINT` isn't set.
+`FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` are read via `import.meta.env` without Vite's default `VITE_` prefix — `vite.config.ts` sets `envPrefix: 'FEEDBACK_'` instead, since these are the only two client-exposed env vars this app has.
 
 **Data:** `src/data/problems.json` holds all 150 problems, each with a full write-up — summary, approach, walkthrough, complexity, pitfalls, and a Python solution.
 
