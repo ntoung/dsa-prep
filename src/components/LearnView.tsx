@@ -27,10 +27,6 @@ export function LearnView() {
   return (
     <div className="learn-view">
       <h1 className="view-title">Learn</h1>
-      <p className="settings-hint">
-        Each pattern below is the general technique behind every problem in that category - read it before you
-        attempt one for the first time.
-      </p>
       <div className="learn-list">
         {LESSONS.map((lesson) => {
           const isOpen = expanded.has(lesson.category)
