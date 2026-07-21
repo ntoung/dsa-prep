@@ -116,7 +116,7 @@
   bottom: 12px;
   z-index: 200;
   display: flex;
-  gap: 40px;
+  gap: 28px;
   justify-content: center;
   pointer-events: none;
 }
@@ -209,6 +209,13 @@
   transform: rotate(12deg);
 }
 
+.card-stamp-mastered {
+  left: 20px;
+  color: #7c3aed;
+  border-color: #7c3aed;
+  transform: rotate(-12deg);
+}
+
 .card-inner {
   position: relative;
   width: 100%;
@@ -292,7 +299,79 @@
   opacity: 0.6;
 }
 
-.card-back .card-title {
+.card-stage-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--accent);
+  opacity: 0.85;
+  font-weight: 600;
+}
+
+.mcq-card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+  text-align: center;
+  cursor: default;
+}
+
+.mcq-kind-tag {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  margin-bottom: 12px;
+}
+
+.mcq-prompt {
+  font-size: 15px;
+  color: var(--text);
+  margin: 0 0 20px;
+}
+
+.mcq-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcq-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: inherit;
+  font-size: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mcq-option:disabled {
+  cursor: default;
+}
+
+.mcq-option-correct {
+  border-color: #16a34a;
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+}
+
+.mcq-option-incorrect {
+  border-color: #d97706;
+  color: #d97706;
+  background: color-mix(in srgb, #d97706 12%, transparent);
+}
+
+.card-back .card-title,
+.card-back .card-flip-hint {
   text-align: center;
 }
 
@@ -693,6 +772,15 @@
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-bg);
+}
+
+.focus-area-pill {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #d97706;
+  color: #d97706;
+  background: color-mix(in srgb, #d97706 12%, transparent);
 }
 
 .feedback-textarea {

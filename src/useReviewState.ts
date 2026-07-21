@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { demote, isDue as isRecordDue, isReviewed as isRecordReviewed, newRecord, promote } from './lib/spacedRepetition'
 import type { ReviewRecord } from './lib/spacedRepetition'
 import { computeStreak, todayKey } from './lib/streak'
+import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
 
 const REVIEW_STATE_KEY = 'dsa-prep:review-state'
+const REVIEW_STATE_VERSION = 1
 const DAILY_ACTIVITY_KEY = 'dsa-prep:daily-activity'
+const DAILY_ACTIVITY_VERSION = 1
 const DAILY_PROGRESS_KEY = 'dsa-prep:daily-progress'
+const DAILY_PROGRESS_VERSION = 1
 
 type ReviewState = Record<string, ReviewRecord>
 // date key (YYYY-MM-DD) -> number of review actions taken that day
@@ -21,33 +25,43 @@ interface LastAction {
   previousRecord: ReviewRecord | undefined
 }
 
-function loadReviewState(): ReviewState {
-  try {
-    const raw = localStorage.getItem(REVIEW_STATE_KEY)
-    return raw ? (JSON.parse(raw) as ReviewState) : {}
-  } catch {
-    return {}
-  }
+function normalizeReviewState(data: unknown): ReviewState {
+  return data && typeof data === 'object' ? (data as ReviewState) : {}
 }
+
+const REVIEW_STATE_MIGRATIONS: Migration<ReviewState>[] = [{ version: 1, migrate: normalizeReviewState }]
+
+function loadReviewState(): ReviewState {
+  return loadVersioned(REVIEW_STATE_KEY, REVIEW_STATE_VERSION, REVIEW_STATE_MIGRATIONS, () => ({}))
+}
+
+function normalizeDailyActivity(data: unknown): DailyActivity {
+  return data && typeof data === 'object' ? (data as DailyActivity) : {}
+}
+
+const DAILY_ACTIVITY_MIGRATIONS: Migration<DailyActivity>[] = [{ version: 1, migrate: normalizeDailyActivity }]
 
 function loadDailyActivity(): DailyActivity {
-  try {
-    const raw = localStorage.getItem(DAILY_ACTIVITY_KEY)
-    return raw ? (JSON.parse(raw) as DailyActivity) : {}
-  } catch {
-    return {}
-  }
+  return loadVersioned(DAILY_ACTIVITY_KEY, DAILY_ACTIVITY_VERSION, DAILY_ACTIVITY_MIGRATIONS, () => ({}))
 }
 
-function loadDailyProgress(now: Date): DailyProgress {
-  try {
-    const raw = localStorage.getItem(DAILY_PROGRESS_KEY)
-    const parsed = raw ? (JSON.parse(raw) as DailyProgress) : null
-    if (parsed && parsed.date === todayKey(now)) return parsed
-  } catch {
-    // fall through to a fresh day
+function normalizeDailyProgress(data: unknown): DailyProgress {
+  const parsed = data as Partial<DailyProgress> | null
+  if (parsed && typeof parsed.date === 'string' && typeof parsed.count === 'number') {
+    return { date: parsed.date, count: parsed.count }
   }
-  return { date: todayKey(now), count: 0 }
+  // An invalid/missing date never matches todayKey(), so the freshness
+  // check in loadDailyProgress below resets it to a fresh day.
+  return { date: '', count: 0 }
+}
+
+const DAILY_PROGRESS_MIGRATIONS: Migration<DailyProgress>[] = [{ version: 1, migrate: normalizeDailyProgress }]
+
+function loadDailyProgress(now: Date): DailyProgress {
+  const stored = loadVersioned(DAILY_PROGRESS_KEY, DAILY_PROGRESS_VERSION, DAILY_PROGRESS_MIGRATIONS, () =>
+    normalizeDailyProgress(null),
+  )
+  return stored.date === todayKey(now) ? stored : { date: todayKey(now), count: 0 }
 }
 
 export function useReviewState() {
@@ -57,15 +71,15 @@ export function useReviewState() {
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
 
   useEffect(() => {
-    localStorage.setItem(REVIEW_STATE_KEY, JSON.stringify(reviewState))
+    saveVersioned(REVIEW_STATE_KEY, REVIEW_STATE_VERSION, reviewState)
   }, [reviewState])
 
   useEffect(() => {
-    localStorage.setItem(DAILY_ACTIVITY_KEY, JSON.stringify(dailyActivity))
+    saveVersioned(DAILY_ACTIVITY_KEY, DAILY_ACTIVITY_VERSION, dailyActivity)
   }, [dailyActivity])
 
   useEffect(() => {
-    localStorage.setItem(DAILY_PROGRESS_KEY, JSON.stringify(dailyProgress))
+    saveVersioned(DAILY_PROGRESS_KEY, DAILY_PROGRESS_VERSION, dailyProgress)
   }, [dailyProgress])
 
   const recordAction = useCallback(
@@ -89,6 +103,12 @@ export function useReviewState() {
   )
 
   const markReviewed = useCallback((id: string) => recordAction(id, promote), [recordAction])
+  // "Easy" tier: jumps two Leitner stages instead of one, for a confident
+  // recall (long swipe or the dedicated icon button) vs. a plain pass.
+  const markReviewedEasy = useCallback(
+    (id: string) => recordAction(id, (record, now) => promote(record, now, 2)),
+    [recordAction],
+  )
   const markRevisit = useCallback((id: string) => recordAction(id, demote), [recordAction])
 
   const toggleReviewed = useCallback((id: string) => {
@@ -144,6 +164,7 @@ export function useReviewState() {
     isReviewed,
     isDue,
     markReviewed,
+    markReviewedEasy,
     markRevisit,
     toggleReviewed,
     undo,
