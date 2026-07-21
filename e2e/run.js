@@ -192,8 +192,30 @@ async function main() {
     await page.click('.bottom-nav-item[aria-label="Learn"]')
     await check(page, '.view-title:has-text("Learn")', 'Learn: page title renders')
     await check(page, '.learn-card-header:has-text("Arrays & Hashing")', 'Learn: category list renders')
+
+    await page.fill('.search-input', 'hash set')
+    await check(page, '.learn-card-header:has-text("Arrays & Hashing")', 'Learn: search matches on lesson body text, not just the title')
+    const twoPointersVisible = await page.locator('.learn-card-header:has-text("Two Pointers")').count()
+    if (twoPointersVisible !== 0) throw new Error('Expected "Two Pointers" to be filtered out by the "hash set" search')
+    console.log('PASS: Learn: search filters out non-matching categories')
+
+    await page.fill('.search-input', 'zzz-no-such-topic')
+    await check(page, '.no-results:has-text(\'No topics match "zzz-no-such-topic"\')', 'Learn: no-results message renders for an unmatched query')
+
+    await page.fill('.search-input', '')
     await page.click('.learn-card-header:has-text("Arrays & Hashing")')
-    await check(page, '.learn-card-body h3:has-text("Recognize it")', 'Learn: expanding a category shows its lesson')
+    await check(page, '.overlay-view h3:has-text("Recognize it")', 'Learn: opening a topic shows its lesson in a full-screen overlay')
+    await check(page, '.topic-problem-row:has-text("Contains Duplicate")', 'Learn: topic overlay lists problems in that category')
+
+    await page.click('.topic-problem-row:has-text("Contains Duplicate")')
+    await check(page, '.learn-flip-card .card-title:has-text("Contains Duplicate")', 'Learn: tapping a problem opens its flip card')
+
+    await page.click('.learn-flip-card')
+    await check(page, '.learn-flip-card .card-back h3:has-text("Summary")', 'Learn: tapping the card flips it to the explanation')
+
+    await page.click('.overlay-view-problem .icon-button[aria-label="Close"]')
+    await page.click('.overlay-view-topic .icon-button[aria-label="Close"]')
+    console.log('PASS: Learn: closing the overlays does not crash the app')
 
     await page.click('.bottom-nav-item[aria-label="Stats"]')
     await check(page, '.view-title:has-text("Stats")', 'Stats: page title renders')

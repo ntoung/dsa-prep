@@ -22,7 +22,12 @@ Four bottom-nav tabs:
 Backed by a lightweight Leitner spaced-repetition scheduler (`src/lib/spacedRepetition.ts`), persisted via `useReviewState.ts` to `localStorage`.
 - **Learn** — 18 pattern-level lessons, one per problem category (`src/data/lessons.ts`).
 Each is written so that reading it equips you to solve *any* problem in that category, not just describe one.
-This replaced an earlier "Browse" search/list tab that was judged redundant with Swipe.
+`LearnView.tsx` has a search box (filters by category name or a substring match inside the lesson text) above the topic list.
+Tapping a topic opens a full-screen detail overlay (Recognize/Template/Tips plus every problem in that category); tapping a problem opens a second full-screen overlay with a flip card.
+Both overlays are `position: fixed` (z-index 400/500, above `.goal-toast`'s 300) so they cover `BottomNav` with no changes to `App.tsx`.
+Browser/hardware back button closes one overlay level at a time via `history.pushState`/`popstate` in `LearnView.tsx` — see the *Consumed-ref comments there before touching that logic, it's there specifically to avoid double-closing or over-popping.
+The flip card (`LearnFlipCard.tsx`) deliberately duplicates `ProblemCard.tsx`'s front/back JSX rather than sharing a component — see "Gesture & scroll constraints" below for why `ProblemCard.tsx` itself should stay untouched.
+This tab is read-only reference and never writes to the spaced-repetition review state.
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
 - **Settings** — code font size (including an XS 10px option), daily goal, and difficulty filter, via `useSettings.ts`.
 Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
@@ -59,6 +64,9 @@ CDP-simulated drags never revealed this; only real touch input did.
 The fix, and the standing rule: the card's height budget grows instead (`min(760px, 100%)` on `.problem-card`), and a smaller font option (XS, 10px) gives another lever for long lines.
 Lines that still don't fit are clipped (`overflow-x: hidden`), not scrolled.
 **Do not re-add scroll inside `.problem-card` along the drag axis without re-litigating this tradeoff.**
+
+This fragility is also why `LearnFlipCard.tsx` (the Learn tab's problem detail view) duplicates `ProblemCard.tsx`'s front/back JSX instead of extracting a shared component — real-device testing isn't available in every environment that touches this code, so the lower-risk tradeoff is a small amount of duplicated static JSX over introducing a shared abstraction into gesture-critical code.
+`LearnFlipCard.tsx` has no `drag`, so it doesn't need the capture-phase `stopPropagation` workaround below — a plain bubble-phase `onClick` is correct there.
 
 **Framer Motion + nested interactive elements gotcha**, hit while building the card's icon buttons (link, undo):
 
