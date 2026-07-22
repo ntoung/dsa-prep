@@ -1,11 +1,9 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { Check, Undo2, X } from 'lucide-react'
-import problemsData from '../data/problems.json'
 import type { Problem } from '../types'
 import { buildMcqQuestion } from '../lib/mcqGenerator'
 
-const ALL_PROBLEMS = problemsData as Problem[]
 const FEEDBACK_DURATION_MS = 900
 
 interface MCQCardProps {
@@ -21,7 +19,7 @@ interface MCQCardProps {
 export function MCQCard({ problem, isTop, stackDepth, onCorrect, onIncorrect, canUndo, onUndo }: MCQCardProps) {
   // Built once per card instance (remounts per-id via key={id} in
   // SwipeReview, same as ProblemCard's flip state), not on every render.
-  const [question] = useState(() => buildMcqQuestion(problem, ALL_PROBLEMS))
+  const [question] = useState(() => buildMcqQuestion(problem))
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
   const handleSelect = (index: number) => {

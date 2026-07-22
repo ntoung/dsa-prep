@@ -1,5 +1,7 @@
+import type { Topic } from '../types'
+
 export interface Lesson {
-  category: string
+  category: Topic
   recognize: string
   template: string
   tips: string
@@ -169,3 +171,9 @@ export const LESSONS: Lesson[] = [
       'Python integers are arbitrary-precision, so problems that assume a fixed 32-bit width need explicit masking (& 0xFFFFFFFF) to match expected overflow behavior.',
   },
 ]
+
+// The full topic vocabulary, in Learn-tab order - reused wherever something
+// needs to pick from or validate against "one of the 18 topics" (e.g. the
+// MCQ generator's pattern-recognition distractor pool) instead of hardcoding
+// a second copy of this list.
+export const TOPICS: Topic[] = LESSONS.map((lesson) => lesson.category)

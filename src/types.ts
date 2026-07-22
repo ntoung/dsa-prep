@@ -11,13 +11,40 @@ export interface RevealStage {
   code: string
 }
 
+// The 18 Learn-tab topics (src/data/lessons.ts) - the fixed vocabulary every
+// problem's `patterns` badges must draw from, so a badge always corresponds
+// to something a user could actually look up in Learn.
+export type Topic =
+  | 'Arrays & Hashing'
+  | 'Two Pointers'
+  | 'Sliding Window'
+  | 'Stack'
+  | 'Binary Search'
+  | 'Linked List'
+  | 'Trees'
+  | 'Tries'
+  | 'Heap / Priority Queue'
+  | 'Backtracking'
+  | 'Graphs'
+  | 'Advanced Graphs'
+  | '1-D Dynamic Programming'
+  | '2-D Dynamic Programming'
+  | 'Greedy'
+  | 'Intervals'
+  | 'Math & Geometry'
+  | 'Bit Manipulation'
+
 export interface Problem {
   id: string
   title: string
   category: string
   difficulty: Difficulty
   url: string
-  pattern: string
+  // One badge per topic this problem is genuinely solvable via - almost
+  // always just [category], with more than one only when the problem has
+  // more than one well-known, independently-standard solving approach
+  // (e.g. Top K Frequent Elements: bucket sort AND a heap-of-size-k).
+  patterns: Topic[]
   summary: string
   approachSummary: string
   walkthrough: string

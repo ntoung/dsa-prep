@@ -1,4 +1,5 @@
 import type { Problem } from '../types'
+import { TOPICS } from '../data/lessons'
 
 export interface McqQuestion {
   problemId: string
@@ -37,15 +38,20 @@ function buildOptions(correct: string, distractors: string[], random: () => numb
   return { options, correctIndex: options.indexOf(correct) }
 }
 
-function buildPatternQuestion(problem: Problem, allProblems: Problem[], random: () => number): McqQuestion | null {
-  const allPatterns = Array.from(new Set(allProblems.map((p) => p.pattern)))
-  const distractors = sampleDistinct(allPatterns, problem.pattern, 3, random)
+// A problem can have more than one legitimate topic (see Problem.patterns),
+// so the distractor pool excludes all of them, not just the one asked about
+// - otherwise a problem's own second-best topic could show up disguised as
+// a wrong answer.
+function buildPatternQuestion(problem: Problem, random: () => number): McqQuestion | null {
+  const correct = problem.patterns[Math.floor(random() * problem.patterns.length)]
+  const pool = TOPICS.filter((topic) => !problem.patterns.includes(topic))
+  const distractors = sampleDistinct(pool, correct, 3, random)
   if (distractors.length < 3) return null
-  const { options, correctIndex } = buildOptions(problem.pattern, distractors, random)
+  const { options, correctIndex } = buildOptions(correct, distractors, random)
   return {
     problemId: problem.id,
     kind: 'pattern',
-    prompt: `Which pattern solves "${problem.title}"?`,
+    prompt: `Which topic solves "${problem.title}"?`,
     options,
     correctIndex,
   }
@@ -69,14 +75,10 @@ function buildComplexityQuestion(problem: Problem, random: () => number): McqQue
 // Picks complexity-recall when the problem's complexity fits the closed
 // pool above, otherwise always falls back to pattern-recognition (which
 // works for every problem) rather than returning null and losing the card.
-export function buildMcqQuestion(
-  problem: Problem,
-  allProblems: Problem[],
-  random: () => number = Math.random,
-): McqQuestion | null {
+export function buildMcqQuestion(problem: Problem, random: () => number = Math.random): McqQuestion | null {
   if (random() < 0.5) {
     const complexityQuestion = buildComplexityQuestion(problem, random)
     if (complexityQuestion) return complexityQuestion
   }
-  return buildPatternQuestion(problem, allProblems, random)
+  return buildPatternQuestion(problem, random)
 }

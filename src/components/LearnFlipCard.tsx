@@ -31,7 +31,11 @@ export function LearnFlipCard({ problem, flipped, onToggleFlip }: LearnFlipCardP
             <span className={`difficulty-badge difficulty-${problem.difficulty.toLowerCase()}`}>
               {problem.difficulty}
             </span>
-            <span className="pattern-tag">{problem.pattern}</span>
+            {problem.patterns.map((pattern) => (
+              <span key={pattern} className="pattern-tag">
+                {pattern}
+              </span>
+            ))}
           </div>
           <h2 className="card-title">{problem.title}</h2>
           <p className="card-category">{problem.category}</p>
