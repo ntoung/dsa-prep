@@ -4,8 +4,8 @@ import { useState } from 'react'
 type FeedbackType = 'Bug' | 'Feature'
 type Status = 'idle' | 'sending' | 'sent' | 'error'
 
-const ENDPOINT = import.meta.env.VITE_FEEDBACK_ENDPOINT
-const SECRET = import.meta.env.VITE_FEEDBACK_SECRET
+const ENDPOINT = import.meta.env.FEEDBACK_ENDPOINT
+const SECRET = import.meta.env.FEEDBACK_SECRET
 
 export function FeedbackForm() {
   const [type, setType] = useState<FeedbackType>('Bug')

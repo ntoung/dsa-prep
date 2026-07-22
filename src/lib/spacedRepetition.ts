@@ -21,8 +21,11 @@ function addDays(date: Date, days: number): Date {
   return result
 }
 
-export function promote(record: ReviewRecord, now: Date): ReviewRecord {
-  const stage = Math.min(record.stage + 1, MAX_STAGE)
+// `stages` lets a confident review (swiped further, or graded "easy") jump
+// more than one Leitner stage at once, so review time concentrates on
+// borderline problems instead of re-showing already-mastered ones as often.
+export function promote(record: ReviewRecord, now: Date, stages: number = 1): ReviewRecord {
+  const stage = Math.min(record.stage + stages, MAX_STAGE)
   return {
     stage,
     dueAt: addDays(now, STAGE_INTERVAL_DAYS[stage]).toISOString(),

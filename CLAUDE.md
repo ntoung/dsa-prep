@@ -11,7 +11,7 @@ Swipe left to mark a problem reviewed, swipe right to revisit it later, tap to f
 No emoji in the UI — this was deliberately replaced early on for cross-platform rendering consistency.
 - Single `src/App.css` with CSS custom properties for theming (light/dark via `prefers-color-scheme`).
 No CSS framework.
-- Deployed to Cloudflare Workers via `wrangler` (`@cloudflare/vite-plugin` in `vite.config.ts`, `npm run deploy`, `npm run preview` runs `wrangler dev`).
+- Deployed to Cloudflare Pages, git-integrated (Cloudflare builds and deploys automatically on push to `main`; no local deploy script or `wrangler`). Build command `npm run build`, output directory `dist`. `npm run preview` runs `vite preview` for a local look at the production build. Client-side env vars for Production/Preview must be set in the Cloudflare Pages dashboard, not just a local `.env` — see `FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` in `.env.example`.
 
 ## Architecture
 
@@ -20,6 +20,9 @@ Four bottom-nav tabs:
 - **Swipe** — the core review loop.
 `ProblemCard.tsx` + `SwipeReview.tsx`, driven by a `framer-motion` drag gesture.
 Backed by a lightweight Leitner spaced-repetition scheduler (`src/lib/spacedRepetition.ts`), persisted via `useReviewState.ts` to `localStorage`.
+A swipe past `SWIPE_THRESHOLD_EASY` (further than a plain pass) grades the card "easy" — `promote()` takes an optional `stages` argument to jump two Leitner stages instead of one — with a MASTERED stamp crossfading in as the visual cue for the tier during the drag itself.
+When recall mode (`revealSolutionOnFlip`) is on, a problem with `revealStages` in `problems.json` shows a skeleton-to-solution build-up across taps instead of jumping straight from prompt to full solution — falls back to a single reveal when a problem has none authored yet.
+Occasional already-reviewed due cards become a multiple-choice quiz (`MCQCard.tsx` + `src/lib/mcqGenerator.ts`) instead of a flip card, at a fixed cadence (`MCQ_INTERVAL` in `SwipeReview.tsx`) — pattern-recognition or complexity-recall questions, generated from the same `problems.json` content, gated behind the "Multiple choice cards" Settings toggle.
 - **Learn** — 18 pattern-level lessons, one per problem category (`src/data/lessons.ts`).
 Each is written so that reading it equips you to solve *any* problem in that category, not just describe one.
 `LearnView.tsx` has a search box (filters by category name or a substring match inside the lesson text) above the topic list.
@@ -29,15 +32,27 @@ Browser/hardware back button closes one overlay level at a time via `history.pus
 The flip card (`LearnFlipCard.tsx`) deliberately duplicates `ProblemCard.tsx`'s front/back JSX rather than sharing a component — see "Gesture & scroll constraints" below for why `ProblemCard.tsx` itself should stay untouched.
 This tab is read-only reference and never writes to the spaced-repetition review state.
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
-- **Settings** — code font size (including an XS 10px option), daily goal, and difficulty filter, via `useSettings.ts`.
+A "Focus areas" card surfaces the weakest categories you've actually started (via `averageStageByCategory` in `src/lib/categoryStats.ts`, shared with the practice queue's weakness-weighted category ordering so "weak" means the same thing in both places) — untouched categories are excluded so they don't all tie for weakest.
+- **Settings** — code font size (including an XS 10px option), daily goal, difficulty filter, problem list selection, practice mode, solution-reveal timing, and multiple-choice card frequency, via `useSettings.ts`.
 Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
-This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `VITE_FEEDBACK_ENDPOINT` isn't set.
+This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `FEEDBACK_ENDPOINT` isn't set.
+`FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` are read via `import.meta.env` without Vite's default `VITE_` prefix — `vite.config.ts` sets `envPrefix: 'FEEDBACK_'` instead, since these are the only two client-exposed env vars this app has.
 
 **Data:** `src/data/problems.json` holds all 150 problems, each with a full write-up — summary, approach, walkthrough, complexity, pitfalls, and a Python solution.
+Each problem's `id` is a short slug matching its LeetCode URL (e.g. `"two-sum"`), never a uuid — it's the stable key into `ReviewState` (`useReviewState.ts`) and into every list in `src/data/problemLists.ts`.
+
+**Problem lists:** `src/data/problemLists.ts` defines named curated subsets (NeetCode 150, Blind 75, ...) as arrays of *existing* problem ids, never duplicated content — a list with `problemIds` omitted means "every problem" (NeetCode 150, the full authored set). Because both lists reference the same `id` for a shared problem, review history (`ReviewRecord.reviewCount`, Leitner stage) is automatically shared across lists with no extra bookkeeping. Adding a new list only works today if every one of its problems already exists in `problems.json`; a list needing new problems is a content-authoring task first.
 
 **Persistence:** fully client-side, `localStorage` only.
 No backend, no auth, no database, single-device by design.
 See "Foundational stances" below before adding anything server-backed.
+Because there's no server copy, `localStorage` has to be treated as the only copy of a user's data — see the versioned-schema rule below.
+
+### Versioned schema for localStorage
+
+Every persisted entity (`useSettings.ts`, `useReviewState.ts`) is loaded/saved through `src/lib/versionedStorage.ts`, which wraps the value as `{ version, data }` and never silently resets to defaults on a shape mismatch — unrecognized or corrupt data is preserved under a `<key>:backup` key instead of being overwritten.
+**Whenever a persisted shape changes (renamed/removed/re-typed field, new required field, changed enum values), bump that entity's `*_VERSION` constant and add a `Migration` entry that transforms the old shape into the new one.**
+Do not just add the field with an in-place default in the load function — that's what silently wiped data before this existed.
 
 ## Code style for solutions
 
@@ -84,6 +99,10 @@ CDP simulation is necessary but not sufficient sign-off — see the gesture gotc
 - `e2e/run.js` drives a Browserbase cloud browser through a `localtunnel` tunnel.
 This has been unreliable due to tunnel connectivity, confirmed via direct testing to be infrastructure flakiness, not app bugs.
 Don't sink excessive time re-diagnosing tunnel timeouts — a couple of retries is reasonable, then fall back to manual verification via chrome-devtools-axi (mobile viewport emulation, screenshots, real click/drag testing).
+
+## Review tooling
+
+Lavish (`lavish-axi`) is used in this project for HTML review artifacts (e.g. mocking up a UI change for sign-off before implementing it). On this machine, `lavish-axi` is globally `npm link`-ed to a local fork at `C:\Users\bish\Developer\lavish-axi` (fork: `github.com/ntoung/lavish-axi`, upstream: `github.com/kunchenguid/lavish-axi`) instead of the published npm package — so editing that fork and running `pnpm run build` there changes what every `lavish-axi` invocation does, on any project, immediately (no republish needed). This isn't referenced anywhere in dsa-prep's own `package.json` — it's a global tool, not something dsa-prep's app code or build depends on.
 
 ## Foundational stances
 

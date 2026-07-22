@@ -1,7 +1,7 @@
 // Paste this into script.google.com (Extensions > Apps Script from a Google Sheet)
 // then deploy as a Web App. See google-apps-script/README.md for step-by-step instructions.
 
-// Set the same value in .env as VITE_FEEDBACK_SECRET. This is a soft deterrent against
+// Set the same value in .env as FEEDBACK_SECRET. This is a soft deterrent against
 // bots hitting the endpoint, not real auth - anything shipped to the client bundle is
 // visible to anyone who reads it.
 var SHARED_SECRET = 'REPLACE_WITH_A_RANDOM_STRING'

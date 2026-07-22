@@ -168,7 +168,7 @@ async function main() {
     await difficultyCard.locator('button:has-text("Hard")').click()
     const enabledDifficulties = await page.evaluate(() => {
       const raw = localStorage.getItem('dsa-prep:settings')
-      return raw ? JSON.parse(raw).enabledDifficulties : null
+      return raw ? JSON.parse(raw).data?.enabledDifficulties : null
     })
     if (JSON.stringify(enabledDifficulties) !== JSON.stringify(['Easy'])) {
       throw new Error(`Expected only "Easy" enabled, got ${JSON.stringify(enabledDifficulties)}`)
@@ -179,9 +179,9 @@ async function main() {
     // earlier "Mark reviewed" swipe) so the very next review action crosses it.
     await page.evaluate(() => {
       const raw = localStorage.getItem('dsa-prep:settings')
-      const parsed = raw ? JSON.parse(raw) : {}
-      parsed.dailyGoal = 2
-      localStorage.setItem('dsa-prep:settings', JSON.stringify(parsed))
+      const envelope = raw ? JSON.parse(raw) : { version: 2, data: {} }
+      envelope.data.dailyGoal = 2
+      localStorage.setItem('dsa-prep:settings', JSON.stringify(envelope))
     })
     await reloadWithRetry(page, '.problem-card', 'App reloads with the lowered daily goal')
     await page.click('.swipe-actions .icon-button-positive')

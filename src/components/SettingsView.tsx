@@ -1,6 +1,7 @@
 import { Minus, Plus } from 'lucide-react'
-import { CODE_FONT_SIZES, DIFFICULTIES } from '../useSettings'
+import { CODE_FONT_SIZES, DIFFICULTIES, PRACTICE_MODES } from '../useSettings'
 import type { useSettings } from '../useSettings'
+import { PROBLEM_LISTS } from '../data/problemLists'
 import { FeedbackForm } from './FeedbackForm'
 
 const SAMPLE_CODE = `def contains_duplicate(nums: list[int]) -> bool:
@@ -23,6 +24,18 @@ const SIZE_LABELS: Record<number, string> = {
   16: 'L',
   18: 'XL',
   20: 'XXL',
+}
+
+const PRACTICE_MODE_LABELS: Record<string, string> = {
+  bfs: 'BFS',
+  dfs: 'DFS',
+  random: 'Random',
+}
+
+const PRACTICE_MODE_HINTS: Record<string, string> = {
+  bfs: 'Spreads cards across topics, with a little repetition mixed in.',
+  dfs: 'Drills one topic at a time before moving to the next.',
+  random: 'Fully shuffled, ignoring topic entirely.',
 }
 
 export function SettingsView({ settings }: SettingsViewProps) {
@@ -96,6 +109,92 @@ export function SettingsView({ settings }: SettingsViewProps) {
               {difficulty}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="stats-card">
+        <div className="stats-card-header">
+          <h3>Problem lists</h3>
+        </div>
+        <p className="settings-hint">Only include problems from these lists in the Swipe deck.</p>
+        <div className="settings-size-pills">
+          {PROBLEM_LISTS.map((list) => (
+            <button
+              key={list.id}
+              type="button"
+              className={`filter-pill${settings.enabledLists.includes(list.id) ? ' active' : ''}`}
+              onClick={() => settings.toggleList(list.id)}
+            >
+              {list.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="stats-card">
+        <div className="stats-card-header">
+          <h3>Practice mode</h3>
+        </div>
+        <p className="settings-hint">{PRACTICE_MODE_HINTS[settings.practiceMode]}</p>
+        <div className="settings-size-pills">
+          {PRACTICE_MODES.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`filter-pill${settings.practiceMode === mode ? ' active' : ''}`}
+              onClick={() => settings.setPracticeMode(mode)}
+            >
+              {PRACTICE_MODE_LABELS[mode]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="stats-card">
+        <div className="stats-card-header">
+          <h3>Solution reveal</h3>
+        </div>
+        <p className="settings-hint">Show the solution on the card front, or hold it back until you flip.</p>
+        <div className="settings-size-pills">
+          <button
+            type="button"
+            className={`filter-pill${!settings.revealSolutionOnFlip ? ' active' : ''}`}
+            onClick={() => settings.setRevealSolutionOnFlip(false)}
+          >
+            Show on front
+          </button>
+          <button
+            type="button"
+            className={`filter-pill${settings.revealSolutionOnFlip ? ' active' : ''}`}
+            onClick={() => settings.setRevealSolutionOnFlip(true)}
+          >
+            Hide until flip
+          </button>
+        </div>
+      </div>
+
+      <div className="stats-card">
+        <div className="stats-card-header">
+          <h3>Multiple choice cards</h3>
+        </div>
+        <p className="settings-hint">
+          Sprinkle occasional pattern/complexity quiz cards into the Swipe deck for problems you've already reviewed.
+        </p>
+        <div className="settings-size-pills">
+          <button
+            type="button"
+            className={`filter-pill${settings.enableMcq ? ' active' : ''}`}
+            onClick={() => settings.setEnableMcq(true)}
+          >
+            On
+          </button>
+          <button
+            type="button"
+            className={`filter-pill${!settings.enableMcq ? ' active' : ''}`}
+            onClick={() => settings.setEnableMcq(false)}
+          >
+            Off
+          </button>
         </div>
       </div>
 

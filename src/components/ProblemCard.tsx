@@ -1,46 +1,91 @@
 import { motion, useTransform, useMotionValue, type PanInfo } from 'framer-motion'
 import { useState } from 'react'
-import { ExternalLink, Undo2 } from 'lucide-react'
-import type { Problem } from '../types'
+import { ChevronLeft, ChevronRight, ExternalLink, Undo2 } from 'lucide-react'
+import type { Problem, RevealStage } from '../types'
 
 interface ProblemCardProps {
   problem: Problem
   onReviewed: () => void
+  onReviewedEasy: () => void
   onRevisit: () => void
   isTop: boolean
   stackDepth: number
   onFlipChange?: (flipped: boolean) => void
   canUndo?: boolean
   onUndo?: () => void
+  // When true, the card starts on the explanation face instead of the
+  // solution face, so the solution isn't the first thing you see.
+  startFlipped?: boolean
 }
 
 const SWIPE_THRESHOLD = 100
+// A swipe past this point grades the card "easy" (promote 2 Leitner stages
+// instead of 1) rather than a plain pass - a further, more deliberate throw
+// for a confident recall. See the MASTERED stamp below for the visual cue
+// that teaches this tier during the drag itself.
+const SWIPE_THRESHOLD_EASY = 220
 
 export function ProblemCard({
   problem,
   onReviewed,
+  onReviewedEasy,
   onRevisit,
   isTop,
   stackDepth,
   onFlipChange,
   canUndo,
   onUndo,
+  startFlipped = false,
 }: ProblemCardProps) {
-  const [flipped, setFlipped] = useState(false)
+  const [flipped, setFlipped] = useState(startFlipped)
+  const [stageIndex, setStageIndex] = useState(0)
+
+  // startFlipped is exactly settings.revealSolutionOnFlip (recall mode) -
+  // progressive reveal only makes sense there, since the other mode shows
+  // the solution immediately by design. Falls back to a single reveal when
+  // no stages are authored for this problem yet.
+  const stages: RevealStage[] | null =
+    startFlipped && problem.revealStages && problem.revealStages.length > 0
+      ? [...problem.revealStages, { label: 'Solution', code: problem.solutionCode }]
+      : null
 
   const toggleFlipped = () => {
     if (!isTop) return
+    if (!flipped && stages && stageIndex < stages.length - 1) {
+      setStageIndex((i) => i + 1)
+      return
+    }
     const next = !flipped
     setFlipped(next)
     onFlipChange?.(next)
   }
+
+  // Explicit step controls alongside the tap-to-advance gesture above - same
+  // transitions, just addressable without having to tap the card itself.
+  const goToPrevStage = () => {
+    setStageIndex((i) => Math.max(0, i - 1))
+  }
+  const goToNextStage = () => {
+    if (stages && stageIndex < stages.length - 1) {
+      setStageIndex((i) => i + 1)
+    } else {
+      setFlipped(true)
+      onFlipChange?.(true)
+    }
+  }
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-240, 240], [-18, 18])
-  const reviewedStampOpacity = useTransform(x, [-140, -30], [1, 0])
+  // REVIEWED fades in over the normal swipe range and back out past the easy
+  // threshold, handing off to MASTERED - a crossfade that teaches the second
+  // tier exists without needing any copy to explain it.
+  const reviewedStampOpacity = useTransform(x, [-260, -200, -140, -30], [0, 1, 1, 0])
+  const masteredStampOpacity = useTransform(x, [-260, -200], [1, 0])
   const revisitStampOpacity = useTransform(x, [30, 140], [0, 1])
 
   const handleDragEnd = (_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => {
-    if (info.offset.x <= -SWIPE_THRESHOLD) {
+    if (info.offset.x <= -SWIPE_THRESHOLD_EASY) {
+      onReviewedEasy()
+    } else if (info.offset.x <= -SWIPE_THRESHOLD) {
       onReviewed()
     } else if (info.offset.x >= SWIPE_THRESHOLD) {
       onRevisit()
@@ -101,6 +146,9 @@ export function ProblemCard({
           <motion.div className="card-stamp card-stamp-reviewed" style={{ opacity: reviewedStampOpacity }}>
             REVIEWED
           </motion.div>
+          <motion.div className="card-stamp card-stamp-mastered" style={{ opacity: masteredStampOpacity }}>
+            MASTERED
+          </motion.div>
           <motion.div className="card-stamp card-stamp-revisit" style={{ opacity: revisitStampOpacity }}>
             REVISIT
           </motion.div>
@@ -114,14 +162,53 @@ export function ProblemCard({
             <span className={`difficulty-badge difficulty-${problem.difficulty.toLowerCase()}`}>
               {problem.difficulty}
             </span>
-            <span className="pattern-tag">{problem.pattern}</span>
+            {problem.patterns.map((pattern) => (
+              <span key={pattern} className="pattern-tag">
+                {pattern}
+              </span>
+            ))}
           </div>
           <h2 className="card-title">{problem.title}</h2>
           <p className="card-category">{problem.category}</p>
           <pre className="solution-code card-solution">
-            <code>{problem.solutionCode}</code>
+            <code>{stages ? stages[stageIndex].code : problem.solutionCode}</code>
           </pre>
-          <p className="card-flip-hint">Tap card for explanation</p>
+          {stages ? (
+            <div className="card-stage-nav">
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                aria-label="Previous step"
+                title="Previous step"
+                disabled={stageIndex === 0}
+                onPointerDownCapture={(e) => e.stopPropagation()}
+                onClickCapture={(e) => {
+                  e.stopPropagation()
+                  goToPrevStage()
+                }}
+              >
+                <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <p className="card-stage-hint">
+                {stages[stageIndex].label} ({stageIndex + 1}/{stages.length})
+              </p>
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                aria-label="Next step"
+                title="Next step"
+                onPointerDownCapture={(e) => e.stopPropagation()}
+                onClickCapture={(e) => {
+                  e.stopPropagation()
+                  goToNextStage()
+                }}
+              >
+                <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <p className="card-flip-hint">Tap card for explanation</p>
+          )}
         </div>
         <div className="card-face card-back">
           {undoButton}
@@ -154,6 +241,7 @@ export function ProblemCard({
               </ul>
             </div>
           )}
+          <p className="card-flip-hint">Tap card for solution</p>
         </div>
       </div>
     </motion.div>

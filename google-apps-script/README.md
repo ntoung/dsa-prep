@@ -17,8 +17,8 @@ No backend to host or maintain - the script runs on Google's infrastructure unde
 7. Copy the Web App URL - it ends in `/exec`.
 8. In the dsa-prep repo, set in `.env`:
    ```
-   VITE_FEEDBACK_ENDPOINT=<the /exec URL>
-   VITE_FEEDBACK_SECRET=<the same random string from step 4>
+   FEEDBACK_ENDPOINT=<the /exec URL>
+   FEEDBACK_SECRET=<the same random string from step 4>
    ```
 9. Rebuild/redeploy the app (`npm run deploy`).
 
