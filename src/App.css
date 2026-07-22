@@ -144,6 +144,15 @@
   border-color: var(--accent-border);
 }
 
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-button:disabled:hover {
+  border-color: var(--border);
+}
+
 .icon-button-sm {
   width: 36px;
   height: 36px;
@@ -299,8 +308,15 @@
   opacity: 0.6;
 }
 
-.card-stage-hint {
+.card-stage-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   margin-top: 12px;
+}
+
+.card-stage-hint {
   font-size: 12px;
   color: var(--accent);
   opacity: 0.85;

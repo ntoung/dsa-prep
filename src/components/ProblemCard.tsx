@@ -1,6 +1,6 @@
 import { motion, useTransform, useMotionValue, type PanInfo } from 'framer-motion'
 import { useState } from 'react'
-import { ExternalLink, Undo2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Undo2 } from 'lucide-react'
 import type { Problem, RevealStage } from '../types'
 
 interface ProblemCardProps {
@@ -58,6 +58,20 @@ export function ProblemCard({
     const next = !flipped
     setFlipped(next)
     onFlipChange?.(next)
+  }
+
+  // Explicit step controls alongside the tap-to-advance gesture above - same
+  // transitions, just addressable without having to tap the card itself.
+  const goToPrevStage = () => {
+    setStageIndex((i) => Math.max(0, i - 1))
+  }
+  const goToNextStage = () => {
+    if (stages && stageIndex < stages.length - 1) {
+      setStageIndex((i) => i + 1)
+    } else {
+      setFlipped(true)
+      onFlipChange?.(true)
+    }
   }
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-240, 240], [-18, 18])
@@ -156,10 +170,38 @@ export function ProblemCard({
             <code>{stages ? stages[stageIndex].code : problem.solutionCode}</code>
           </pre>
           {stages ? (
-            <p className="card-stage-hint">
-              {stages[stageIndex].label} ({stageIndex + 1}/{stages.length}) - tap to{' '}
-              {stageIndex < stages.length - 1 ? 'continue' : 'see the explanation'}
-            </p>
+            <div className="card-stage-nav">
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                aria-label="Previous step"
+                title="Previous step"
+                disabled={stageIndex === 0}
+                onPointerDownCapture={(e) => e.stopPropagation()}
+                onClickCapture={(e) => {
+                  e.stopPropagation()
+                  goToPrevStage()
+                }}
+              >
+                <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <p className="card-stage-hint">
+                {stages[stageIndex].label} ({stageIndex + 1}/{stages.length})
+              </p>
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                aria-label="Next step"
+                title="Next step"
+                onPointerDownCapture={(e) => e.stopPropagation()}
+                onClickCapture={(e) => {
+                  e.stopPropagation()
+                  goToNextStage()
+                }}
+              >
+                <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </div>
           ) : (
             <p className="card-flip-hint">Tap card for explanation</p>
           )}
