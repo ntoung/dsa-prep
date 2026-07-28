@@ -35,12 +35,108 @@ See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rule
 
 This app is client-side only — `localStorage` is the single copy of a user's data, no server or sync. Every key is wrapped as `{ version, data }` by `src/lib/versionedStorage.ts` and loaded through a list of `Migration`s; unrecognized or corrupt data is preserved under `<key>:backup` instead of being overwritten with defaults. Whenever one of these shapes changes, bump its version constant and add a migration (see the rule in `CLAUDE.md`).
 
-| Key | Version | Shape | Owner hook |
-| --- | --- | --- | --- |
-| `dsa-prep:settings` | 5 | `Settings` — code font size, enabled difficulties, daily goal, practice mode, reveal/progressive-reveal toggles, enabled problem lists, MCQ toggle, code language | `useSettings.ts` |
-| `dsa-prep:review-state` | 1 | `Record<problemId, ReviewRecord>` — Leitner `stage` (0–5), `dueAt`, `lastReviewedAt`, `reviewCount`, one entry per reviewed problem | `useReviewState.ts` (record shape in `src/lib/spacedRepetition.ts`) |
-| `dsa-prep:daily-activity` | 1 | `Record<YYYY-MM-DD, count>` — review actions taken per day, used to compute the streak | `useReviewState.ts` |
-| `dsa-prep:daily-progress` | 1 | `{ date, count }` — today's progress toward the daily goal; resets when `date` no longer matches today | `useReviewState.ts` |
-| `dsa-prep:activity-log` | 1 | `ActivityLogEntry[]` (`{ problemId, outcome, timestamp }`), capped at the most recent 2000 entries | `useReviewState.ts` |
-| `dsa-prep:notes` | 1 | `Record<problemId, string>` — free-text scratchpad notes, independent of review state | `useNotes.ts` |
-| `dsa-prep:excluded-problems` | 1 | `string[]` of problem ids permanently skipped by the Swipe queue | `useExcludedProblems.ts` |
+### `dsa-prep:settings` — owned by `useSettings.ts`
+
+```json
+{
+  "version": 5,
+  "data": {
+    "codeFontSize": 14,
+    "enabledDifficulties": ["Easy", "Medium", "Hard"],
+    "dailyGoal": 10,
+    "practiceMode": "random",
+    "revealSolutionOnFlip": true,
+    "progressiveReveal": true,
+    "enabledLists": ["neetcode150"],
+    "enableMcq": true,
+    "codeLanguage": "python"
+  }
+}
+```
+
+### `dsa-prep:review-state` — owned by `useReviewState.ts` (record shape in `src/lib/spacedRepetition.ts`)
+
+`Record<problemId, ReviewRecord>` — a Leitner `stage` (0–5), one entry per reviewed problem:
+
+```json
+{
+  "version": 1,
+  "data": {
+    "two-sum": {
+      "stage": 3,
+      "dueAt": "2026-08-02T14:30:00.000Z",
+      "lastReviewedAt": "2026-07-26T14:30:00.000Z",
+      "reviewCount": 4
+    }
+  }
+}
+```
+
+### `dsa-prep:daily-activity` — owned by `useReviewState.ts`
+
+`Record<YYYY-MM-DD, count>` — review actions taken per day, used to compute the streak:
+
+```json
+{
+  "version": 1,
+  "data": {
+    "2026-07-27": 8,
+    "2026-07-28": 3
+  }
+}
+```
+
+### `dsa-prep:daily-progress` — owned by `useReviewState.ts`
+
+Today's progress toward the daily goal; resets when `date` no longer matches today:
+
+```json
+{
+  "version": 1,
+  "data": {
+    "date": "2026-07-28",
+    "count": 3
+  }
+}
+```
+
+### `dsa-prep:activity-log` — owned by `useReviewState.ts`
+
+`ActivityLogEntry[]`, capped at the most recent 2000 entries:
+
+```json
+{
+  "version": 1,
+  "data": [
+    {
+      "problemId": "two-sum",
+      "outcome": "reviewed-easy",
+      "timestamp": "2026-07-28T14:32:10.000Z"
+    }
+  ]
+}
+```
+
+### `dsa-prep:notes` — owned by `useNotes.ts`
+
+`Record<problemId, string>` — free-text scratchpad notes, independent of review state:
+
+```json
+{
+  "version": 1,
+  "data": {
+    "two-sum": "Hashmap of value -> index; check for the complement before inserting."
+  }
+}
+```
+
+### `dsa-prep:excluded-problems` — owned by `useExcludedProblems.ts`
+
+`string[]` of problem ids permanently skipped by the Swipe queue:
+
+```json
+{
+  "version": 1,
+  "data": ["reverse-linked-list"]
+}
+```
