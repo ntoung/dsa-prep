@@ -10,6 +10,11 @@ const DAILY_ACTIVITY_KEY = 'dsa-prep:daily-activity'
 const DAILY_ACTIVITY_VERSION = 1
 const DAILY_PROGRESS_KEY = 'dsa-prep:daily-progress'
 const DAILY_PROGRESS_VERSION = 1
+const ACTIVITY_LOG_KEY = 'dsa-prep:activity-log'
+const ACTIVITY_LOG_VERSION = 1
+// Bounds localStorage growth over months of daily use - oldest entries drop
+// off first once the cap is hit.
+const ACTIVITY_LOG_MAX_ENTRIES = 2000
 
 type ReviewState = Record<string, ReviewRecord>
 // date key (YYYY-MM-DD) -> number of review actions taken that day
@@ -19,6 +24,16 @@ interface DailyProgress {
   date: string
   count: number
 }
+
+export type ReviewOutcome = 'reviewed' | 'reviewed-easy' | 'revisit'
+
+export interface ActivityLogEntry {
+  problemId: string
+  outcome: ReviewOutcome
+  timestamp: string
+}
+
+type ActivityLog = ActivityLogEntry[]
 
 interface LastAction {
   id: string
@@ -64,10 +79,21 @@ function loadDailyProgress(now: Date): DailyProgress {
   return stored.date === todayKey(now) ? stored : { date: todayKey(now), count: 0 }
 }
 
+function normalizeActivityLog(data: unknown): ActivityLog {
+  return Array.isArray(data) ? (data as ActivityLog) : []
+}
+
+const ACTIVITY_LOG_MIGRATIONS: Migration<ActivityLog>[] = [{ version: 1, migrate: normalizeActivityLog }]
+
+function loadActivityLog(): ActivityLog {
+  return loadVersioned(ACTIVITY_LOG_KEY, ACTIVITY_LOG_VERSION, ACTIVITY_LOG_MIGRATIONS, () => [])
+}
+
 export function useReviewState() {
   const [reviewState, setReviewState] = useState<ReviewState>(() => loadReviewState())
   const [dailyActivity, setDailyActivity] = useState<DailyActivity>(() => loadDailyActivity())
   const [dailyProgress, setDailyProgress] = useState<DailyProgress>(() => loadDailyProgress(new Date()))
+  const [activityLog, setActivityLog] = useState<ActivityLog>(() => loadActivityLog())
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
 
   useEffect(() => {
@@ -82,8 +108,12 @@ export function useReviewState() {
     saveVersioned(DAILY_PROGRESS_KEY, DAILY_PROGRESS_VERSION, dailyProgress)
   }, [dailyProgress])
 
+  useEffect(() => {
+    saveVersioned(ACTIVITY_LOG_KEY, ACTIVITY_LOG_VERSION, activityLog)
+  }, [activityLog])
+
   const recordAction = useCallback(
-    (id: string, transform: (record: ReviewRecord, now: Date) => ReviewRecord) => {
+    (id: string, outcome: ReviewOutcome, transform: (record: ReviewRecord, now: Date) => ReviewRecord) => {
       const now = new Date()
       const previousRecord = reviewState[id]
 
@@ -97,19 +127,23 @@ export function useReviewState() {
         const count = prev.date === key ? prev.count + 1 : 1
         return { date: key, count }
       })
+      setActivityLog((prev) => {
+        const next = [...prev, { problemId: id, outcome, timestamp: now.toISOString() }]
+        return next.length > ACTIVITY_LOG_MAX_ENTRIES ? next.slice(next.length - ACTIVITY_LOG_MAX_ENTRIES) : next
+      })
       setLastAction({ id, previousRecord })
     },
     [reviewState],
   )
 
-  const markReviewed = useCallback((id: string) => recordAction(id, promote), [recordAction])
+  const markReviewed = useCallback((id: string) => recordAction(id, 'reviewed', promote), [recordAction])
   // "Easy" tier: jumps two Leitner stages instead of one, for a confident
   // recall (long swipe or the dedicated icon button) vs. a plain pass.
   const markReviewedEasy = useCallback(
-    (id: string) => recordAction(id, (record, now) => promote(record, now, 2)),
+    (id: string) => recordAction(id, 'reviewed-easy', (record, now) => promote(record, now, 2)),
     [recordAction],
   )
-  const markRevisit = useCallback((id: string) => recordAction(id, demote), [recordAction])
+  const markRevisit = useCallback((id: string) => recordAction(id, 'revisit', demote), [recordAction])
 
   const toggleReviewed = useCallback((id: string) => {
     setReviewState((prev) => {
@@ -146,6 +180,11 @@ export function useReviewState() {
       }
       return { ...prev, [key]: current - 1 }
     })
+    // recordAction only ever appends, and undo only ever reverts the single
+    // most recent action (see LastAction above) - so the entry to remove is
+    // always whatever's currently last, regardless of the cap in recordAction
+    // having trimmed the front of the array since.
+    setActivityLog((prev) => prev.slice(0, -1))
     setLastAction(null)
   }, [lastAction])
 
@@ -158,6 +197,7 @@ export function useReviewState() {
   return {
     reviewState,
     dailyActivity,
+    activityLog,
     reviewedCount,
     streak,
     todayCount: dailyProgress.count,

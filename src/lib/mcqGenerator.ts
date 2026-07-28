@@ -1,12 +1,17 @@
-import type { Problem } from '../types'
+import type { Language, Problem } from '../types'
 import { TOPICS } from '../data/lessons'
 
 export interface McqQuestion {
   problemId: string
-  kind: 'pattern' | 'complexity'
+  kind: 'pattern' | 'complexity' | 'crux'
   prompt: string
   options: string[]
   correctIndex: number
+  // Only set when kind === 'crux' - the authored solution split around the
+  // blank that `options` fill in. MCQCard renders these as a code block
+  // instead of using `prompt` as plain text when present.
+  codeBefore?: string
+  codeAfter?: string
 }
 
 // Real complexity.time strings vary wildly in shape - "O(v + e)", "O(n * n!)",
@@ -72,13 +77,44 @@ function buildComplexityQuestion(problem: Problem, random: () => number): McqQue
   }
 }
 
-// Picks complexity-recall when the problem's complexity fits the closed
-// pool above, otherwise always falls back to pattern-recognition (which
-// works for every problem) rather than returning null and losing the card.
-export function buildMcqQuestion(problem: Problem, random: () => number = Math.random): McqQuestion | null {
+// Authored content (see CruxQuestion in types.ts) rather than synthesized
+// like the other two kinds - only available once the pipeline has authored
+// at least one crux question for this problem in the selected language.
+// Options are still reshuffled at runtime via buildOptions (same as the
+// other kinds) rather than shown in their authored order, so the correct
+// answer's position isn't memorizable across repeat exposures.
+function buildCruxQuestion(problem: Problem, language: Language, random: () => number): McqQuestion | null {
+  const candidates = problem.cruxQuestions?.filter((q) => q.language === language)
+  if (!candidates || candidates.length === 0) return null
+  const chosen = candidates[Math.floor(random() * candidates.length)]
+  const correct = chosen.options[chosen.correctIndex]
+  const distractors = chosen.options.filter((_, i) => i !== chosen.correctIndex)
+  const { options, correctIndex } = buildOptions(correct, distractors, random)
+  return {
+    problemId: problem.id,
+    kind: 'crux',
+    prompt: `Fill in the missing piece of "${problem.title}"`,
+    options,
+    correctIndex,
+    codeBefore: chosen.codeBefore,
+    codeAfter: chosen.codeAfter,
+  }
+}
+
+// Crux (when authored content exists) is the richest question type - it
+// tests recall of this exact solution, not just metadata about it - so it
+// gets first crack at being picked. Complexity/pattern remain the fallback
+// for every problem, same 50/50 split as before crux existed.
+export function buildMcqQuestion(
+  problem: Problem,
+  language: Language,
+  random: () => number = Math.random,
+): McqQuestion | null {
+  const cruxQuestion = buildCruxQuestion(problem, language, random)
+  if (cruxQuestion && random() < 1 / 3) return cruxQuestion
   if (random() < 0.5) {
     const complexityQuestion = buildComplexityQuestion(problem, random)
     if (complexityQuestion) return complexityQuestion
   }
-  return buildPatternQuestion(problem, random)
+  return buildPatternQuestion(problem, random) ?? cruxQuestion
 }

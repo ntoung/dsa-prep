@@ -31,6 +31,53 @@
     ],
     "patterns": [
       "Arrays & Hashing"
+    ],
+    "translations": {
+      "javascript": {
+        "code": "function containsDuplicate(nums) {\n  const seen = new Set();\n  for (const num of nums) {\n    if (seen.has(num)) {\n      return true;\n    }\n    seen.add(num);\n  }\n  return false;\n}\n",
+        "revealStages": [
+          {
+            "label": "Skeleton",
+            "code": "function containsDuplicate(nums) {\n  const seen = new Set();\n  for (const num of nums) {\n    // TODO: check membership, then record num\n  }\n  return false;\n}\n"
+          },
+          {
+            "label": "Check before inserting",
+            "code": "function containsDuplicate(nums) {\n  const seen = new Set();\n  for (const num of nums) {\n    if (seen.has(num)) {\n      return true;\n    }\n    // TODO: remember this value for future checks\n  }\n  return false;\n}\n"
+          }
+        ]
+      }
+    },
+    "cruxQuestions": [
+      {
+        "id": "contains-duplicate-crux-1",
+        "language": "python",
+        "codeBefore": "def contains_duplicate(nums: list[int]) -> bool:\n    seen = set()\n    for num in nums:\n        if num in seen:\n            return True\n",
+        "codeAfter": "\n    return False\n",
+        "options": [
+          "        seen.add(num)",
+          "        seen.add(nums)",
+          "        return False",
+          "        seen.remove(num)"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      },
+      {
+        "id": "contains-duplicate-crux-2",
+        "language": "javascript",
+        "codeBefore": "function containsDuplicate(nums) {\n  const seen = new Set();\n  for (const num of nums) {\n    if (seen.has(num)) {\n      return true;\n    }\n",
+        "codeAfter": "\n  }\n  return false;\n}\n",
+        "options": [
+          "    seen.add(num);",
+          "    seen.add(nums);",
+          "    return false;",
+          "    seen.delete(num);"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      }
     ]
   },
   {
@@ -65,6 +112,53 @@
     ],
     "patterns": [
       "Arrays & Hashing"
+    ],
+    "translations": {
+      "javascript": {
+        "code": "function validAnagram(s, t) {\n  if (s.length !== t.length) {\n    return false;\n  }\n  const counts = new Map();\n  for (const ch of s) {\n    counts.set(ch, (counts.get(ch) || 0) + 1);\n  }\n  for (const ch of t) {\n    counts.set(ch, (counts.get(ch) || 0) - 1);\n  }\n  return [...counts.values()].every((v) => v === 0);\n}\n",
+        "revealStages": [
+          {
+            "label": "Skeleton",
+            "code": "function validAnagram(s, t) {\n  if (s.length !== t.length) {\n    return false;\n  }\n  // TODO: compare character frequency counts of s and t\n  return false;\n}\n"
+          },
+          {
+            "label": "Compare frequency counts",
+            "code": "function validAnagram(s, t) {\n  if (s.length !== t.length) {\n    return false;\n  }\n  const counts = new Map();\n  for (const ch of s) {\n    counts.set(ch, (counts.get(ch) || 0) + 1);\n  }\n  // TODO: subtract counts using t, then check everything canceled to zero\n  return false;\n}\n"
+          }
+        ]
+      }
+    },
+    "cruxQuestions": [
+      {
+        "id": "valid-anagram-crux-1",
+        "language": "python",
+        "codeBefore": "from collections import Counter\n\ndef valid_anagram(s: str, t: str) -> bool:\n    if len(s) != len(t):\n        return False\n    s_counts = Counter(s)\n",
+        "codeAfter": "",
+        "options": [
+          "    return s_counts == Counter(t)",
+          "    return s_counts != Counter(t)",
+          "    return Counter(t) == s",
+          "    return s_counts == Counter(s)"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      },
+      {
+        "id": "valid-anagram-crux-2",
+        "language": "javascript",
+        "codeBefore": "function validAnagram(s, t) {\n  if (s.length !== t.length) {\n    return false;\n  }\n  const counts = new Map();\n  for (const ch of s) {\n    counts.set(ch, (counts.get(ch) || 0) + 1);\n  }\n",
+        "codeAfter": "\n}\n",
+        "options": [
+          "  for (const ch of t) {\n    counts.set(ch, (counts.get(ch) || 0) - 1);\n  }\n  return [...counts.values()].every((v) => v === 0);",
+          "  for (const ch of t) {\n    counts.set(ch, (counts.get(ch) || 0) + 1);\n  }\n  return [...counts.values()].every((v) => v === 0);",
+          "  for (const ch of t) {\n    counts.set(ch, (counts.get(ch) || 0) - 1);\n  }\n  return true;",
+          "  for (const ch of t) {\n    counts.set(ch, (counts.get(ch) || 0) - 1);\n  }\n  return [...counts.values()].some((v) => v === 0);"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      }
     ]
   },
   {
@@ -99,6 +193,53 @@
     ],
     "patterns": [
       "Arrays & Hashing"
+    ],
+    "translations": {
+      "javascript": {
+        "code": "function twoSum(nums, target) {\n  const seen = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    const complement = target - nums[i];\n    if (seen.has(complement)) {\n      return [seen.get(complement), i];\n    }\n    seen.set(nums[i], i);\n  }\n  return [];\n}\n",
+        "revealStages": [
+          {
+            "label": "Skeleton",
+            "code": "function twoSum(nums, target) {\n  const seen = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    // TODO: check if this value's complement was already seen\n  }\n  return [];\n}\n"
+          },
+          {
+            "label": "Check the complement",
+            "code": "function twoSum(nums, target) {\n  const seen = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    const complement = target - nums[i];\n    if (seen.has(complement)) {\n      return [seen.get(complement), i];\n    }\n    // TODO: record this value's index for future lookups\n  }\n  return [];\n}\n"
+          }
+        ]
+      }
+    },
+    "cruxQuestions": [
+      {
+        "id": "two-sum-crux-1",
+        "language": "python",
+        "codeBefore": "def two_sum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in seen:\n            return [seen[complement], i]\n",
+        "codeAfter": "\n    return []\n",
+        "options": [
+          "        seen[num] = i",
+          "        seen[i] = num",
+          "        seen[complement] = i",
+          "        seen[num] = complement"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      },
+      {
+        "id": "two-sum-crux-2",
+        "language": "javascript",
+        "codeBefore": "function twoSum(nums, target) {\n  const seen = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    const complement = target - nums[i];\n    if (seen.has(complement)) {\n      return [seen.get(complement), i];\n    }\n",
+        "codeAfter": "\n  }\n  return [];\n}\n",
+        "options": [
+          "    seen.set(nums[i], i);",
+          "    seen.set(i, nums[i]);",
+          "    seen.set(complement, i);",
+          "    seen.set(nums[i], complement);"
+        ],
+        "correctIndex": 0,
+        "needsReview": false,
+        "reviewReason": ""
+      }
     ]
   },
   {

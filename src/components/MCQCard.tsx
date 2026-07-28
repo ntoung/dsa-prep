@@ -1,13 +1,20 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { Check, Undo2, X } from 'lucide-react'
-import type { Problem } from '../types'
+import type { Language, Problem } from '../types'
 import { buildMcqQuestion } from '../lib/mcqGenerator'
 
 const FEEDBACK_DURATION_MS = 900
 
+const KIND_LABELS = {
+  pattern: 'Pattern check',
+  complexity: 'Complexity check',
+  crux: 'Fill in the blank',
+} as const
+
 interface MCQCardProps {
   problem: Problem
+  language: Language
   isTop: boolean
   stackDepth: number
   onCorrect: () => void
@@ -16,10 +23,10 @@ interface MCQCardProps {
   onUndo?: () => void
 }
 
-export function MCQCard({ problem, isTop, stackDepth, onCorrect, onIncorrect, canUndo, onUndo }: MCQCardProps) {
+export function MCQCard({ problem, language, isTop, stackDepth, onCorrect, onIncorrect, canUndo, onUndo }: MCQCardProps) {
   // Built once per card instance (remounts per-id via key={id} in
   // SwipeReview, same as ProblemCard's flip state), not on every render.
-  const [question] = useState(() => buildMcqQuestion(problem))
+  const [question] = useState(() => buildMcqQuestion(problem, language))
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
   const handleSelect = (index: number) => {
@@ -60,9 +67,19 @@ export function MCQCard({ problem, isTop, stackDepth, onCorrect, onIncorrect, ca
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
     >
       {undoButton}
-      <span className="mcq-kind-tag">{question.kind === 'pattern' ? 'Pattern check' : 'Complexity check'}</span>
+      <span className="mcq-kind-tag">{KIND_LABELS[question.kind]}</span>
       <h2 className="card-title">{problem.title}</h2>
-      <p className="mcq-prompt">{question.prompt}</p>
+      {question.kind === 'crux' ? (
+        <pre className="solution-code mcq-crux-code">
+          <code>
+            {question.codeBefore}
+            <span className="mcq-crux-blank">___</span>
+            {question.codeAfter}
+          </code>
+        </pre>
+      ) : (
+        <p className="mcq-prompt">{question.prompt}</p>
+      )}
       <div className="mcq-options">
         {question.options.map((option, index) => {
           const showFeedback = selectedIndex !== null
@@ -83,7 +100,7 @@ export function MCQCard({ problem, isTop, stackDepth, onCorrect, onIncorrect, ca
               disabled={showFeedback}
               onClick={() => handleSelect(index)}
             >
-              <span>{option}</span>
+              <span className={question.kind === 'crux' ? 'mcq-option-code' : undefined}>{option}</span>
               {showFeedback && isCorrectOption && <Check size={18} strokeWidth={2.5} aria-hidden="true" />}
               {showFeedback && isSelected && !isCorrectOption && <X size={18} strokeWidth={2.5} aria-hidden="true" />}
             </button>

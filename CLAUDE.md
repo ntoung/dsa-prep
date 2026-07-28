@@ -21,7 +21,7 @@ Four bottom-nav tabs:
 `ProblemCard.tsx` + `SwipeReview.tsx`, driven by a `framer-motion` drag gesture.
 Backed by a lightweight Leitner spaced-repetition scheduler (`src/lib/spacedRepetition.ts`), persisted via `useReviewState.ts` to `localStorage`.
 A swipe past `SWIPE_THRESHOLD_EASY` (further than a plain pass) grades the card "easy" — `promote()` takes an optional `stages` argument to jump two Leitner stages instead of one — with a MASTERED stamp crossfading in as the visual cue for the tier during the drag itself.
-When recall mode (`revealSolutionOnFlip`) is on, a problem with `revealStages` in `problems.json` shows a skeleton-to-solution build-up across taps instead of jumping straight from prompt to full solution — falls back to a single reveal when a problem has none authored yet.
+When recall mode (`revealSolutionOnFlip`) and the "Progressive reveal" setting are both on, a problem with `revealStages` in `problems.json` shows a skeleton-to-solution build-up across taps instead of jumping straight from prompt to full solution — falls back to a single reveal when a problem has none authored yet or when progressive reveal is off.
 Occasional already-reviewed due cards become a multiple-choice quiz (`MCQCard.tsx` + `src/lib/mcqGenerator.ts`) instead of a flip card, at a fixed cadence (`MCQ_INTERVAL` in `SwipeReview.tsx`) — pattern-recognition or complexity-recall questions, generated from the same `problems.json` content, gated behind the "Multiple choice cards" Settings toggle.
 - **Learn** — 18 pattern-level lessons, one per problem category (`src/data/lessons.ts`).
 Each is written so that reading it equips you to solve *any* problem in that category, not just describe one.
@@ -33,7 +33,7 @@ The flip card (`LearnFlipCard.tsx`) deliberately duplicates `ProblemCard.tsx`'s 
 This tab is read-only reference and never writes to the spaced-repetition review state.
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
 A "Focus areas" card surfaces the weakest categories you've actually started (via `averageStageByCategory` in `src/lib/categoryStats.ts`, shared with the practice queue's weakness-weighted category ordering so "weak" means the same thing in both places) — untouched categories are excluded so they don't all tie for weakest.
-- **Settings** — code font size (including an XS 10px option), daily goal, difficulty filter, problem list selection, practice mode, solution-reveal timing, and multiple-choice card frequency, via `useSettings.ts`.
+- **Settings** — code font size (including an XS 10px option), daily goal, difficulty filter, problem list selection, practice mode, solution-reveal timing, progressive reveal (skeleton-to-solution stage stepping vs. full solution upfront), and multiple-choice card frequency, via `useSettings.ts`.
 Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
 This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `FEEDBACK_ENDPOINT` isn't set.
 `FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` are read via `import.meta.env` without Vite's default `VITE_` prefix — `vite.config.ts` sets `envPrefix: 'FEEDBACK_'` instead, since these are the only two client-exposed env vars this app has.

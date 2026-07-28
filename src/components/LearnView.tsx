@@ -1,10 +1,31 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronRight, Search, X } from 'lucide-react'
+import {
+  Ban,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  ExternalLink,
+  NotebookPen,
+  RotateCcw,
+  Search,
+  X,
+} from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import problemsData from '../data/problems.json'
 import { LESSONS, type Lesson } from '../data/lessons'
 import type { Problem } from '../types'
+import type { useReviewState } from '../useReviewState'
+import type { useExcludedProblems } from '../useExcludedProblems'
+import type { useNotes } from '../useNotes'
+import type { useSettings } from '../useSettings'
+import { useEscapeToClose } from '../useEscapeToClose'
+import { getSolution } from '../lib/getSolution'
 import { LearnFlipCard } from './LearnFlipCard'
+import { NotesPanel } from './NotesPanel'
 
 const ALL_PROBLEMS = problemsData as Problem[]
 const PROBLEMS_BY_ID = new Map(ALL_PROBLEMS.map((p) => [p.id, p]))
@@ -39,11 +60,47 @@ function highlightFirstMatch(text: string, query: string): ReactNode {
   )
 }
 
-export function LearnView() {
+interface LearnViewProps {
+  review: ReturnType<typeof useReviewState>
+  excluded: ReturnType<typeof useExcludedProblems>
+  notes: ReturnType<typeof useNotes>
+  settings: ReturnType<typeof useSettings>
+  initialCategory?: string | null
+  onInitialCategoryConsumed?: () => void
+}
+
+export function LearnView({
+  review,
+  excluded,
+  notes,
+  settings,
+  initialCategory,
+  onInitialCategoryConsumed,
+}: LearnViewProps) {
   const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [activeProblemId, setActiveProblemId] = useState<string | null>(null)
   const [flipped, setFlipped] = useState(false)
+  // Which problems in the currently-open topic have their solution expanded
+  // inline, right in the list - separate from activeProblemId, which opens
+  // the full-screen flip card instead. Keyed by id rather than a single
+  // "expanded index" so multiple rows (or all of them, via expandAll) can be
+  // open at once.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  // Which row's copy-to-clipboard icon is showing its "copied" checkmark -
+  // only one at a time makes sense, so a single id rather than a Set.
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null)
+  const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
+
+  // Opens the topic overlay for a category handed off from elsewhere (e.g. the
+  // Stats tab's Focus areas pills) - consumed immediately so switching away and
+  // back to Learn doesn't reopen the same topic on its own.
+  useEffect(() => {
+    if (!initialCategory) return
+    setActiveCategory(initialCategory)
+    onInitialCategoryConsumed?.()
+  }, [initialCategory, onInitialCategoryConsumed])
 
   const trimmedQuery = query.trim()
   const filteredLessons = LESSONS.filter((l) => lessonMatchesQuery(l, trimmedQuery))
@@ -51,7 +108,10 @@ export function LearnView() {
   const topicProblems = activeCategory ? ALL_PROBLEMS.filter((p) => p.category === activeCategory) : []
   const activeProblem = activeProblemId ? PROBLEMS_BY_ID.get(activeProblemId) : undefined
 
-  const openTopic = (category: string) => setActiveCategory(category)
+  const openTopic = (category: string) => {
+    setActiveCategory(category)
+    setExpandedIds(new Set())
+  }
   const closeTopic = () => {
     setActiveCategory(null)
     setActiveProblemId(null)
@@ -62,6 +122,67 @@ export function LearnView() {
   }
   const closeProblem = () => setActiveProblemId(null)
   const toggleFlip = () => setFlipped((f) => !f)
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setQuery('')
+  }
+
+  // Same close functions the X buttons use below, so Escape closes one
+  // overlay level at a time (problem before topic) exactly like tapping X
+  // does - see useEscapeToClose for how nested overlays stay ordered.
+  useEscapeToClose(closeTopic, activeCategory !== null)
+  useEscapeToClose(closeProblem, activeProblemId !== null)
+  useEscapeToClose(closeSearch, searchOpen)
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+  const allExpanded = topicProblems.length > 0 && topicProblems.every((p) => expandedIds.has(p.id))
+  const toggleExpandAll = () => {
+    setExpandedIds(allExpanded ? new Set() : new Set(topicProblems.map((p) => p.id)))
+  }
+
+  useEffect(() => {
+    if (!copiedRowId) return
+    const timeout = setTimeout(() => setCopiedRowId(null), 1500)
+    return () => clearTimeout(timeout)
+  }, [copiedRowId])
+
+  const copyRowSolution = (p: Problem) => {
+    navigator.clipboard.writeText(getSolution(p, settings.codeLanguage).code).then(() => setCopiedRowId(p.id))
+  }
+
+  // Reviewing from here closes the overlay afterward, the same way a swipe
+  // dismisses the card on the Swipe tab - there's no queue here, just the
+  // one problem you opened.
+  const handleReviewed = () => {
+    if (!activeProblem) return
+    review.markReviewed(activeProblem.id)
+    closeProblem()
+  }
+  const handleReviewedEasy = () => {
+    if (!activeProblem) return
+    review.markReviewedEasy(activeProblem.id)
+    closeProblem()
+  }
+  const handleRevisit = () => {
+    if (!activeProblem) return
+    review.markRevisit(activeProblem.id)
+    closeProblem()
+  }
+  const handleExclude = () => {
+    if (!activeProblem) return
+    excluded.exclude(activeProblem.id)
+    closeProblem()
+  }
 
   // Back-button/gesture support: push a history entry per open overlay level, and let a
   // shared popstate listener close the topmost one instead of navigating away. The
@@ -116,18 +237,41 @@ export function LearnView() {
 
   return (
     <div className="learn-view">
-      <h1 className="view-title">Learn</h1>
-
-      <div className="search-wrap">
-        <Search className="search-icon" size={16} strokeWidth={2} aria-hidden="true" />
-        <input
-          className="search-input"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search topics or techniques…"
-          aria-label="Search topics"
-        />
+      <div className="learn-header">
+        <h1 className="view-title">Learn</h1>
+        {!searchOpen && (
+          <button
+            type="button"
+            className="icon-button icon-button-sm"
+            aria-label="Search topics"
+            title="Search topics"
+            onClick={() => setSearchOpen(true)}
+          >
+            <Search size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+        {searchOpen && (
+          <div className="search-wrap">
+            <Search className="search-icon" size={16} strokeWidth={2} aria-hidden="true" />
+            <input
+              className="search-input"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search topics or techniques…"
+              aria-label="Search topics"
+              autoFocus
+            />
+            <button
+              type="button"
+              className="icon-button icon-button-sm"
+              aria-label="Close search"
+              onClick={closeSearch}
+            >
+              <X size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </div>
 
       {filteredLessons.length === 0 ? (
@@ -148,17 +292,18 @@ export function LearnView() {
 
       <AnimatePresence>
         {activeLesson && (
-          <motion.div
-            key="topic-overlay"
-            className="overlay-view overlay-view-topic"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'tween', duration: 0.28 }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="learn-topic-title"
-          >
+          <div className="overlay-wrap overlay-wrap-topic">
+            <motion.div
+              key="topic-overlay"
+              className="overlay-view"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.28 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="learn-topic-title"
+            >
             <div className="overlay-header">
               <button type="button" className="icon-button" aria-label="Close" onClick={closeTopic}>
                 <X size={18} strokeWidth={2} aria-hidden="true" />
@@ -182,41 +327,127 @@ export function LearnView() {
                 <p>{activeLesson.tips}</p>
               </div>
               <div className="detail-block">
-                <h3>Problems in this category</h3>
+                <div className="topic-list-header">
+                  <h3>Problems in this category</h3>
+                  <button
+                    type="button"
+                    className="icon-button icon-button-sm"
+                    aria-label={allExpanded ? 'Collapse all solutions' : 'Expand all solutions'}
+                    title={allExpanded ? 'Collapse all' : 'Expand all'}
+                    onClick={toggleExpandAll}
+                  >
+                    {allExpanded ? (
+                      <ChevronsDownUp size={16} strokeWidth={2} aria-hidden="true" />
+                    ) : (
+                      <ChevronsUpDown size={16} strokeWidth={2} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
                 <div className="topic-problem-list">
-                  {topicProblems.map((p) => (
-                    <button
-                      type="button"
-                      key={p.id}
-                      className="topic-problem-row"
-                      onClick={() => openProblem(p.id)}
-                    >
-                      <span className="topic-problem-title">{p.title}</span>
-                      <span className={`difficulty-badge difficulty-${p.difficulty.toLowerCase()}`}>
-                        {p.difficulty}
-                      </span>
-                    </button>
-                  ))}
+                  {topicProblems.map((p) => {
+                    const expanded = expandedIds.has(p.id)
+                    const hasNote = notes.hasNote(p.id)
+                    const copied = copiedRowId === p.id
+                    const rowCode = getSolution(p, settings.codeLanguage).code
+                    return (
+                      <div className="topic-problem-item" key={p.id}>
+                        <div className="topic-problem-row">
+                          <button
+                            type="button"
+                            className="topic-problem-row-main"
+                            aria-label={`${p.title}, ${p.difficulty}`}
+                            onClick={() => openProblem(p.id)}
+                          >
+                            <span
+                              className={`difficulty-dot difficulty-dot-${p.difficulty.toLowerCase()}`}
+                              aria-hidden="true"
+                            />
+                            <span className="topic-problem-title">{p.title}</span>
+                          </button>
+                          {/* Hidden until the row is hovered/focused - same three actions
+                              (link/copy/notes) as the full-screen card below, so opening a
+                              row via a mouse or via tap both reach the same actions. */}
+                          <div className="topic-row-icons">
+                            <a
+                              className="icon-button icon-button-sm"
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label="View original problem on LeetCode"
+                              title="View original problem on LeetCode"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                            </a>
+                            <button
+                              type="button"
+                              className="icon-button icon-button-sm"
+                              aria-label={copied ? 'Solution copied' : 'Copy solution to clipboard'}
+                              title={copied ? 'Copied!' : 'Copy solution'}
+                              onClick={() => copyRowSolution(p)}
+                            >
+                              {copied ? (
+                                <Check size={16} strokeWidth={2} aria-hidden="true" />
+                              ) : (
+                                <Copy size={16} strokeWidth={2} aria-hidden="true" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              className={`icon-button icon-button-sm${hasNote ? ' icon-button-active' : ''}`}
+                              aria-label={hasNote ? 'Edit note' : 'Add note'}
+                              title={hasNote ? 'Edit note' : 'Add note'}
+                              onClick={() => setNotesOpenFor(p.id)}
+                            >
+                              <NotebookPen size={16} strokeWidth={2} aria-hidden="true" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="icon-button icon-button-sm topic-problem-expand-btn"
+                            aria-label={expanded ? 'Hide solution' : 'Show solution'}
+                            title={expanded ? 'Hide solution' : 'Show solution'}
+                            aria-expanded={expanded}
+                            onClick={() => toggleExpanded(p.id)}
+                          >
+                            <ChevronDown
+                              className={`topic-problem-expand-icon${expanded ? ' expanded' : ''}`}
+                              size={16}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                        {expanded && (
+                          <pre className="solution-code topic-problem-solution">
+                            <code>{rowCode}</code>
+                          </pre>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {activeProblem && (
-          <motion.div
-            key="problem-overlay"
-            className="overlay-view overlay-view-problem"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'tween', duration: 0.28 }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="learn-problem-title"
-          >
+          <div className="overlay-wrap overlay-wrap-problem">
+            <motion.div
+              key="problem-overlay"
+              className="overlay-view"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.28 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="learn-problem-title"
+            >
             <div className="overlay-header">
               <button type="button" className="icon-button" aria-label="Close" onClick={closeProblem}>
                 <X size={18} strokeWidth={2} aria-hidden="true" />
@@ -226,11 +457,71 @@ export function LearnView() {
               </div>
             </div>
             <div className="detail-body learn-problem-body">
-              <LearnFlipCard problem={activeProblem} flipped={flipped} onToggleFlip={toggleFlip} />
+              <LearnFlipCard
+                problem={activeProblem}
+                flipped={flipped}
+                onToggleFlip={toggleFlip}
+                onOpenNotes={() => setNotesOpenFor(activeProblem.id)}
+                hasNote={notes.hasNote(activeProblem.id)}
+                language={settings.codeLanguage}
+              />
+              <div className="swipe-actions">
+                <button
+                  type="button"
+                  className="icon-button icon-button-danger"
+                  aria-label="Exclude from review rotation"
+                  title="Exclude"
+                  onClick={handleExclude}
+                >
+                  <Ban size={22} strokeWidth={2} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button icon-button-warning"
+                  aria-label="Revisit later"
+                  title="Revisit later"
+                  onClick={handleRevisit}
+                >
+                  <RotateCcw size={24} strokeWidth={2} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button icon-button-positive"
+                  aria-label="Mark reviewed"
+                  title="Mark reviewed"
+                  onClick={handleReviewed}
+                >
+                  <Check size={26} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button icon-button-positive"
+                  aria-label="Mark reviewed - easy, knew it instantly"
+                  title="Mark reviewed - easy"
+                  onClick={handleReviewedEasy}
+                >
+                  <CheckCheck size={24} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </div>
             </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
+      {notesOpenFor &&
+        (() => {
+          const noteProblem = PROBLEMS_BY_ID.get(notesOpenFor)
+          if (!noteProblem) return null
+          return (
+            <NotesPanel
+              problem={noteProblem}
+              value={notes.getNote(notesOpenFor)}
+              onChange={(text) => notes.setNote(notesOpenFor, text)}
+              onClose={() => setNotesOpenFor(null)}
+            />
+          )
+        })()}
     </div>
   )
 }

@@ -39,7 +39,7 @@ export function FeedbackForm() {
   }
 
   return (
-    <div className="stats-card">
+    <div className="stats-card settings-card-full">
       <div className="stats-card-header">
         <h3>Report a bug or request a feature</h3>
       </div>

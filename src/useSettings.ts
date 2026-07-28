@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Difficulty, PracticeMode } from './types'
+import type { Difficulty, Language, PracticeMode } from './types'
 import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
 import { PROBLEM_LISTS } from './data/problemLists'
 
 const SETTINGS_KEY = 'dsa-prep:settings'
-const SETTINGS_VERSION = 3
+const SETTINGS_VERSION = 5
 
 export const CODE_FONT_SIZES = [10, 12, 14, 16, 18, 20] as const
 const DEFAULT_CODE_FONT_SIZE = 14
@@ -19,6 +19,9 @@ const DEFAULT_PRACTICE_MODE: PracticeMode = 'random'
 
 const DEFAULT_ENABLED_LISTS: string[] = ['neetcode150']
 
+export const LANGUAGES: Language[] = ['python', 'javascript']
+const DEFAULT_CODE_LANGUAGE: Language = 'python'
+
 interface Settings {
   codeFontSize: number
   enabledDifficulties: Difficulty[]
@@ -29,19 +32,28 @@ interface Settings {
   // testing effect over passive review. Existing users keep whatever value
   // they already have on disk; this default only reaches fresh installs.
   revealSolutionOnFlip: boolean
+  // When true (and revealSolutionOnFlip is also on), a problem with authored
+  // revealStages builds up from skeleton to full solution across taps. When
+  // false, the full solution is shown immediately - no stage stepping.
+  progressiveReveal: boolean
   enabledLists: string[]
   // Sprinkles occasional multiple-choice cards (pattern-recognition or
   // complexity-recall) into the Swipe deck for already-reviewed problems.
   // Answering one grades the underlying problem via the same Leitner
   // promote/demote a swipe would - not a parallel tracking mechanism.
   enableMcq: boolean
+  // Which language's solution to display. Safe to set to any Language even
+  // before every problem has a translation - getSolution() falls back to
+  // Python for problems that don't have this language yet.
+  codeLanguage: Language
 }
 
 // Fills in defaults for anything missing/invalid rather than discarding the
 // rest of the object - this doubles as the v0 -> v1 migration for settings
 // saved before versioning existed, the v1 -> v2 migration that added
-// enabledLists, and the v2 -> v3 migration that added enableMcq (see
-// versionedStorage.ts).
+// enabledLists, the v2 -> v3 migration that added enableMcq, the v3 ->
+// v4 migration that added codeLanguage, and the v4 -> v5 migration that
+// added progressiveReveal (see versionedStorage.ts).
 function normalizeSettings(data: unknown): Settings {
   const parsed = (data ?? {}) as Partial<Settings>
   const enabledLists = Array.isArray(parsed.enabledLists)
@@ -56,8 +68,10 @@ function normalizeSettings(data: unknown): Settings {
     dailyGoal: parsed.dailyGoal && parsed.dailyGoal > 0 ? parsed.dailyGoal : DEFAULT_DAILY_GOAL,
     practiceMode: parsed.practiceMode && PRACTICE_MODES.includes(parsed.practiceMode) ? parsed.practiceMode : DEFAULT_PRACTICE_MODE,
     revealSolutionOnFlip: parsed.revealSolutionOnFlip ?? true,
+    progressiveReveal: parsed.progressiveReveal ?? true,
     enabledLists: enabledLists.length > 0 ? enabledLists : DEFAULT_ENABLED_LISTS,
     enableMcq: parsed.enableMcq ?? true,
+    codeLanguage: parsed.codeLanguage && LANGUAGES.includes(parsed.codeLanguage) ? parsed.codeLanguage : DEFAULT_CODE_LANGUAGE,
   }
 }
 
@@ -65,6 +79,8 @@ const SETTINGS_MIGRATIONS: Migration<Settings>[] = [
   { version: 1, migrate: normalizeSettings },
   { version: 2, migrate: normalizeSettings },
   { version: 3, migrate: normalizeSettings },
+  { version: 4, migrate: normalizeSettings },
+  { version: 5, migrate: normalizeSettings },
 ]
 
 function loadSettings(): Settings {
@@ -106,8 +122,16 @@ export function useSettings() {
     setSettings((prev) => ({ ...prev, revealSolutionOnFlip }))
   }, [])
 
+  const setProgressiveReveal = useCallback((progressiveReveal: boolean) => {
+    setSettings((prev) => ({ ...prev, progressiveReveal }))
+  }, [])
+
   const setEnableMcq = useCallback((enableMcq: boolean) => {
     setSettings((prev) => ({ ...prev, enableMcq }))
+  }, [])
+
+  const setCodeLanguage = useCallback((codeLanguage: Language) => {
+    setSettings((prev) => ({ ...prev, codeLanguage }))
   }, [])
 
   const toggleList = useCallback((listId: string) => {
@@ -127,7 +151,9 @@ export function useSettings() {
     toggleDifficulty,
     setPracticeMode,
     setRevealSolutionOnFlip,
+    setProgressiveReveal,
     setEnableMcq,
+    setCodeLanguage,
     toggleList,
   }
 }

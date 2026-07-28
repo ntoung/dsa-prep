@@ -7,12 +7,25 @@
 }
 
 .app-view {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   text-align: left;
+}
+
+/* Bottom-right, floating just above the bottom nav - anchored to .app-view's
+   own box (which already ends exactly where BottomNav begins) instead of a
+   fixed pixel offset, so it doesn't need to duplicate BottomNav's safe-area
+   math. Opens KeyboardShortcutsOverlay; see useKeyboardShortcuts.ts for the
+   "?" key doing the same thing from anywhere in the app. */
+.shortcuts-help-button {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 250;
 }
 
 /* Bottom nav */
@@ -55,6 +68,74 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.swipe-header {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px 0;
+}
+
+/* Inline autocomplete opened from .swipe-header's search button - a bar plus
+   a dropdown, not a full-screen page (see ProblemSearch.tsx). Positioned
+   relative so the dropdown below can anchor to it instead of the viewport. */
+.problem-search {
+  position: relative;
+  width: 100%;
+}
+
+.problem-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--text);
+}
+
+.problem-search-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+}
+
+.problem-search-input:focus-visible {
+  outline: none;
+}
+
+.problem-search-input::placeholder {
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 250;
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+}
+
+.search-dropdown .search-result-list {
+  margin-top: 0;
+}
+
+.search-dropdown .no-results {
+  margin-top: 0;
 }
 
 .goal-toast {
@@ -116,7 +197,7 @@
   bottom: 12px;
   z-index: 200;
   display: flex;
-  gap: 28px;
+  gap: 18px;
   justify-content: center;
   pointer-events: none;
 }
@@ -172,21 +253,53 @@
   background: rgba(22, 163, 74, 0.1);
 }
 
+.icon-button-danger {
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+/* Generic "toggled on" styling, reused wherever an icon-button reflects
+   some existing state (e.g. the notes button when a note is already saved). */
+.icon-button-active {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
 /* Problem card */
 
+/* Outer element: pure stack positioning (size, absolute placement, the
+   stackDepth-driven scale/y/opacity settle animation). Split from the
+   draggable surface below so the drag gesture's own x/y motion values don't
+   fight with this element's animate-driven y - a MotionValue bound via
+   style takes over that transform key entirely, so both couldn't target
+   plain `y` on the same element. */
 .problem-card {
   position: absolute;
   width: min(700px, 94vw);
   height: min(760px, 100%);
+}
+
+.problem-card-surface {
+  position: absolute;
+  inset: 0;
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--bg);
   box-shadow: var(--shadow);
   cursor: grab;
-  touch-action: pan-y;
+  /* Both axes are driven by JS (see ProblemCard.tsx's onPan handlers, which
+     also manually drive content scroll position instead of native
+     overflow), so there's no native touch behavior left worth deferring to
+     the browser here - this is intentionally unconditional, not something
+     to loosen for "better" native scroll feel. Needs real-device
+     verification regardless: this general category (gesture vs. scroll
+     conflict) is exactly what broke swiping once before (see CLAUDE.md). */
+  touch-action: none;
 }
 
-.problem-card:active {
+.problem-card-surface:active {
   cursor: grabbing;
 }
 
@@ -225,6 +338,22 @@
   transform: rotate(-12deg);
 }
 
+.card-stamp-revisit-up {
+  left: 50%;
+  color: #d97706;
+  border-color: #d97706;
+  transform: translateX(-50%);
+}
+
+.card-stamp-exclude {
+  top: auto;
+  bottom: 24px;
+  left: 50%;
+  color: #dc2626;
+  border-color: #dc2626;
+  transform: translateX(-50%);
+}
+
 .card-inner {
   position: relative;
   width: 100%;
@@ -248,6 +377,59 @@
   display: flex;
   flex-direction: column;
   text-align: center;
+  /* backface-visibility: hidden only stops painting, not hit-testing - the
+     face rotated away is still there for click purposes on real browsers.
+     Its absolutely-positioned corner buttons (card-top-actions-left/right)
+     end up mirrored to the opposite corner from the visible face's, landing
+     almost exactly on top of that face's own corner button (undo vs. the
+     link, on ProblemCard) and stealing its clicks. Explicitly disabling
+     pointer-events on the face facing away removes it from hit-testing
+     instead of relying on backface-visibility to do that too. */
+  pointer-events: none;
+}
+
+.card-inner:not(.flipped) .card-face.card-front,
+.card-inner.flipped .card-face.card-back {
+  pointer-events: auto;
+}
+
+/* .icon-button below unconditionally sets pointer-events: auto (needed to
+   punch through .swipe-actions' own pointer-events: none) - that overrides
+   the none this face just inherited, un-disabling its corner buttons again
+   and reintroducing the exact stolen-click bug the rule above exists to
+   prevent. Re-assert none specifically for icon-buttons in the face facing
+   away; this selector's higher specificity wins over plain .icon-button
+   regardless of source order. */
+.card-inner:not(.flipped) .card-face.card-back .icon-button,
+.card-inner.flipped .card-face.card-front .icon-button {
+  pointer-events: none;
+}
+
+/* ProblemCard-only override: its surface drives scroll position itself (see
+   the block comment above handlePan in ProblemCard.tsx) rather than native
+   overflow, so this face just clips instead. Scoped to
+   .problem-card-surface specifically - .card-face is shared with
+   LearnFlipCard.tsx, which has no drag/pan gesture and still needs its
+   plain native scroll left alone. */
+.problem-card-surface .card-face {
+  overflow: hidden;
+  display: block;
+  padding: 0;
+}
+
+.card-face-content {
+  /* border-box, since this sits under width: 100% - nothing else in this
+     file needs it (block elements without an explicit width already
+     exclude padding from the containing block's width automatically), but
+     here the explicit width would otherwise add padding on top of 100%,
+     overflowing the parent by 2x the horizontal padding. */
+  box-sizing: border-box;
+  /* Extra bottom padding keeps content clear of the icon-button overlay in .swipe-actions */
+  padding: 24px 24px 76px;
+  display: flex;
+  flex-direction: column;
+  text-align: inherit;
+  width: 100%;
 }
 
 .card-top-actions-left {
@@ -261,6 +443,25 @@
   position: absolute;
   top: 16px;
   right: 16px;
+  z-index: 5;
+}
+
+/* Sits to the left of card-top-actions-right (the LeetCode link) - only
+   ProblemCard's front (solution) face has both, so this offset only needs
+   to clear one icon-button-sm's width plus a gap. */
+.card-top-actions-right-2 {
+  position: absolute;
+  top: 16px;
+  right: 60px;
+  z-index: 5;
+}
+
+/* One icon-button-sm width + gap further left of card-top-actions-right-2 -
+   same reasoning as that class's comment, just one slot further out. */
+.card-top-actions-right-3 {
+  position: absolute;
+  top: 16px;
+  right: 104px;
   z-index: 5;
 }
 
@@ -281,10 +482,16 @@
   margin: 0 0 4px;
 }
 
-.card-category {
-  font-size: 13px;
-  color: var(--text);
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin-bottom: 16px;
+}
+
+.card-title-row .card-title {
+  margin: 0;
 }
 
 .card-solution {
@@ -295,11 +502,13 @@
 
 /* Compound selector so this reliably beats .solution-code's overflow-x: auto
    regardless of source order (equal specificity would otherwise be a
-   cascade-order footgun). No horizontal scroll here - the card expands to
-   fit the code instead, so the whole card stays swipeable from anywhere,
-   including over the code. */
+   cascade-order footgun). No horizontal scroll here - long lines wrap
+   instead, so the whole card stays swipeable from anywhere, including over
+   the code. */
 .solution-code.card-solution {
   overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .card-flip-hint {
@@ -350,6 +559,27 @@
   margin: 0 0 20px;
 }
 
+.mcq-crux-code {
+  margin: 0 0 20px;
+  text-align: left;
+}
+
+.mcq-crux-blank {
+  display: inline-block;
+  min-width: 2.5em;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  font-weight: 700;
+}
+
+.mcq-option-code {
+  font-family: var(--mono);
+  font-size: 13px;
+  white-space: pre;
+}
+
 .mcq-options {
   display: flex;
   flex-direction: column;
@@ -397,16 +627,16 @@
 .stats-view {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 24px 20px;
+  padding: 20px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .stats-card {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 18px 20px;
+  padding: 14px 16px;
 }
 
 .stats-card-header {
@@ -424,8 +654,8 @@
 }
 
 .stats-progress-bar {
-  margin-top: 10px;
-  height: 8px;
+  margin-top: 6px;
+  height: 6px;
   border-radius: 999px;
   background: var(--border);
   overflow: hidden;
@@ -437,34 +667,56 @@
   transition: width 0.3s;
 }
 
-.stats-streak {
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.stats-tile {
+  background: var(--code-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 28px 20px;
 }
 
-.stats-streak-number {
-  font-size: 48px;
+.stats-section-divider {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.stats-tile-streak {
+  justify-content: center;
+  gap: 4px;
+}
+
+.stats-tile-number {
+  font-size: 24px;
   font-weight: 700;
   color: var(--accent);
-  line-height: 1;
+  line-height: 1.1;
 }
 
-.stats-streak-label {
-  font-size: 14px;
+.stats-tile-label {
+  margin-top: 2px;
+  font-size: 11px;
   color: var(--text);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Coverage heatmap */
 
 .heatmap-cell {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 3px;
   background: var(--border);
   flex: 0 0 auto;
@@ -491,7 +743,7 @@
 }
 
 .heatmap-legend {
-  margin-top: 10px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -502,24 +754,97 @@
 /* Category stats */
 
 .category-stats {
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
 
 .category-stat-header {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-h);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .category-heat-row {
   display: flex;
   flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* Daily activity calendar */
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-h);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.calendar-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.calendar-nav-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.calendar-weekday-row {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 26px));
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text);
+  text-align: center;
+}
+
+.calendar-grid {
+  margin-top: 3px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 26px));
+  justify-content: center;
   gap: 3px;
+}
+
+.calendar-day-blank {
+  aspect-ratio: 1;
+}
+
+.calendar-day {
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-day-number {
+  font-size: 9px;
+  color: var(--text-h);
+}
+
+.calendar-day.level-3 .calendar-day-number,
+.calendar-day.level-4 .calendar-day-number {
+  color: var(--bg);
+}
+
+.calendar-day-today {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 /* Settings view */
@@ -527,10 +852,29 @@
 .settings-view {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 24px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 20px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.settings-view > .stats-card {
+  min-width: 0;
+}
+
+@media (max-width: 340px) {
+  .settings-view {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.settings-view .view-title {
+  grid-column: 1 / -1;
+}
+
+.settings-card-full {
+  grid-column: 1 / -1;
 }
 
 .view-title {
@@ -604,29 +948,48 @@
   font-size: 14px;
 }
 
-.search-wrap {
+.learn-header {
   position: relative;
-  margin-top: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Toggled open by the search icon-button in .learn-header, instead of
+   always sitting inline above the topic list - floats over the top of the
+   list (like .search-dropdown does for the Swipe tab's search) so it
+   doesn't permanently reserve layout space. Reuses the topic list's live
+   filtering underneath rather than showing its own results dropdown. */
+.search-wrap {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
 }
 
 .search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
   color: var(--text);
   opacity: 0.6;
-  pointer-events: none;
 }
 
 .search-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font: inherit;
   font-size: 15px;
-  padding: 10px 12px 10px 38px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--code-bg);
+  border: none;
+  background: transparent;
   color: var(--text-h);
 }
 
@@ -636,26 +999,217 @@
 }
 
 .search-input:focus-visible {
+  outline: none;
+}
+
+/* Notes panel - opened from the notes button on ProblemCard's solution face */
+
+.notes-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+}
+
+.notes-panel {
+  width: 100%;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+}
+
+.notes-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.notes-panel-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.notes-textarea {
+  flex: 1 1 auto;
+  min-height: 160px;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  color: var(--text-h);
+  background: var(--bg);
+}
+
+/* Keyboard shortcuts help - opened from .shortcuts-help-button (bottom
+   right, every tab) or the "?" shortcut itself. z-index above the notes
+   panel (600) since either can be reached while the other is open. */
+
+.shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+}
+
+.shortcuts-panel {
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+}
+
+.shortcuts-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.shortcuts-panel-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcuts-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcuts-list-item:last-child {
+  border-bottom: none;
+}
+
+.shortcuts-key {
+  flex: 0 0 auto;
+  min-width: 64px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-h);
+}
+
+.shortcuts-description {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.notes-textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
 /* Learn: full-screen topic/problem overlays */
 
-.overlay-view {
+/* Fixed positioning takes .overlay-view out of #root's normal flow
+   (index.css's `width: 1126px; margin: 0 auto`), so this wrapper re-derives
+   the same centered max-width instead of inheriting it - otherwise the
+   overlay spans the full viewport instead of matching the column every
+   other view sits in. Split into its own non-animated element (rather than
+   just centering .overlay-view directly) because .overlay-view is the
+   motion.div that animates `x` for the slide-in - framer-motion writes that
+   straight to the element's inline `transform`, which would silently
+   clobber a `transform: translateX(-50%)` centering trick placed on the
+   same element. left:50% + translateX(-50%) is the standard centering trick
+   for a fixed element (unlike margin: auto, which only centers elements in
+   normal flow). */
+.overlay-wrap {
   position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(1126px, 100%);
+  transform: translateX(-50%);
+  overflow: hidden;
+}
+
+.overlay-wrap-topic {
+  z-index: 400;
+}
+
+.overlay-wrap-problem {
+  z-index: 500;
+}
+
+.overlay-view {
+  position: absolute;
   inset: 0;
   background: var(--bg);
   display: flex;
   flex-direction: column;
 }
 
-.overlay-view-topic {
-  z-index: 400;
+.search-result-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.overlay-view-problem {
-  z-index: 500;
+.search-result-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result-item:hover {
+  background: var(--accent-bg);
+}
+
+.search-result-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
 }
 
 .overlay-header {
@@ -690,20 +1244,62 @@
   text-align: left;
 }
 
+.topic-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topic-list-header h3 {
+  margin: 0;
+}
+
 .topic-problem-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.topic-problem-item {
+  display: flex;
+  flex-direction: column;
+}
+
 .topic-problem-row {
+  /* Needed since width: 100% + padding + border would otherwise overflow
+     the row's container by the padding/border amount in the default
+     content-box model - see .card-face-content's comment for the same
+     pattern. */
+  box-sizing: border-box;
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 6px 6px 6px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
+  background: transparent;
+}
+
+.topic-problem-row:has(+ .topic-problem-solution) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.topic-problem-row:hover {
+  background: var(--accent-bg);
+}
+
+/* The row's own button: everything but the expand toggle - opens the
+   full-screen flip card, same as tapping the whole row used to. */
+.topic-problem-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border: none;
   background: transparent;
   color: var(--text-h);
   font: inherit;
@@ -711,16 +1307,73 @@
   text-align: left;
 }
 
-.topic-problem-row:hover {
-  background: var(--accent-bg);
-}
-
 .topic-problem-title {
   flex: 1;
   font-size: 14px;
 }
 
+.difficulty-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.difficulty-dot-easy {
+  background: #16a34a;
+}
+
+.difficulty-dot-medium {
+  background: #d97706;
+}
+
+.difficulty-dot-hard {
+  background: #dc2626;
+}
+
+/* Link/copy/notes for a row - same three actions as the full-screen card,
+   just reachable without leaving the list. Hidden until the row itself is
+   interacted with, so a dense list of problems doesn't show three extra
+   icon-buttons per row all the time. :focus-within (not just the row's own
+   :focus, which a plain div can't receive anyway) keeps these reachable via
+   keyboard tab order - tabbing into a hidden button still moves focus to it. */
+.topic-row-icons {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.topic-problem-row:hover .topic-row-icons,
+.topic-problem-row:focus-within .topic-row-icons {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.topic-problem-expand-btn {
+  flex: 0 0 auto;
+}
+
+.topic-problem-expand-icon {
+  transition: transform 0.2s ease;
+}
+
+.topic-problem-expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.topic-problem-solution {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border: 1px solid var(--border);
+  border-top: none;
+}
+
 .learn-problem-body {
+  position: relative;
   display: flex;
   overflow: hidden;
 }
@@ -791,13 +1444,40 @@
   background: var(--accent-bg);
 }
 
+.excluded-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.excluded-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
 .focus-area-pill {
+  font: inherit;
   font-size: 13px;
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid #d97706;
   color: #d97706;
   background: color-mix(in srgb, #d97706 12%, transparent);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.focus-area-pill:hover {
+  background: color-mix(in srgb, #d97706 22%, transparent);
 }
 
 .feedback-textarea {
@@ -855,6 +1535,23 @@
   border-radius: 999px;
   color: var(--accent);
   background: var(--accent-bg);
+}
+
+.review-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--text);
+  opacity: 0.65;
+  background: var(--border);
+}
+
+.review-count-badge-date {
+  font-weight: 400;
 }
 
 .detail-block h3 {

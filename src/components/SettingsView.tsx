@@ -1,8 +1,14 @@
-import { Minus, Plus } from 'lucide-react'
-import { CODE_FONT_SIZES, DIFFICULTIES, PRACTICE_MODES } from '../useSettings'
+import { Minus, Plus, X } from 'lucide-react'
+import { CODE_FONT_SIZES, DIFFICULTIES, LANGUAGES, PRACTICE_MODES } from '../useSettings'
 import type { useSettings } from '../useSettings'
+import type { useExcludedProblems } from '../useExcludedProblems'
 import { PROBLEM_LISTS } from '../data/problemLists'
+import problemsData from '../data/problems.json'
+import type { Problem } from '../types'
 import { FeedbackForm } from './FeedbackForm'
+
+const ALL_PROBLEMS = problemsData as Problem[]
+const PROBLEMS_BY_ID = new Map(ALL_PROBLEMS.map((p) => [p.id, p]))
 
 const SAMPLE_CODE = `def contains_duplicate(nums: list[int]) -> bool:
     seen = set()
@@ -15,6 +21,7 @@ const SAMPLE_CODE = `def contains_duplicate(nums: list[int]) -> bool:
 
 interface SettingsViewProps {
   settings: ReturnType<typeof useSettings>
+  excluded: ReturnType<typeof useExcludedProblems>
 }
 
 const SIZE_LABELS: Record<number, string> = {
@@ -24,6 +31,11 @@ const SIZE_LABELS: Record<number, string> = {
   16: 'L',
   18: 'XL',
   20: 'XXL',
+}
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  python: 'Python',
+  javascript: 'JavaScript',
 }
 
 const PRACTICE_MODE_LABELS: Record<string, string> = {
@@ -38,7 +50,7 @@ const PRACTICE_MODE_HINTS: Record<string, string> = {
   random: 'Fully shuffled, ignoring topic entirely.',
 }
 
-export function SettingsView({ settings }: SettingsViewProps) {
+export function SettingsView({ settings, excluded }: SettingsViewProps) {
   return (
     <div className="settings-view">
       <h1 className="view-title">Settings</h1>
@@ -73,24 +85,23 @@ export function SettingsView({ settings }: SettingsViewProps) {
 
       <div className="stats-card">
         <div className="stats-card-header">
-          <h3>Code font size</h3>
-          <span>{settings.codeFontSize}px</span>
+          <h3>Solution language</h3>
         </div>
+        <p className="settings-hint">
+          Problems without a translation yet still show Python.
+        </p>
         <div className="settings-size-pills">
-          {CODE_FONT_SIZES.map((size) => (
+          {LANGUAGES.map((language) => (
             <button
-              key={size}
+              key={language}
               type="button"
-              className={`filter-pill${settings.codeFontSize === size ? ' active' : ''}`}
-              onClick={() => settings.setCodeFontSize(size)}
+              className={`filter-pill${settings.codeLanguage === language ? ' active' : ''}`}
+              onClick={() => settings.setCodeLanguage(language)}
             >
-              {SIZE_LABELS[size]}
+              {LANGUAGE_LABELS[language]}
             </button>
           ))}
         </div>
-        <pre className="solution-code settings-preview">
-          <code>{SAMPLE_CODE}</code>
-        </pre>
       </div>
 
       <div className="stats-card">
@@ -175,6 +186,31 @@ export function SettingsView({ settings }: SettingsViewProps) {
 
       <div className="stats-card">
         <div className="stats-card-header">
+          <h3>Progressive reveal</h3>
+        </div>
+        <p className="settings-hint">
+          Build up from skeleton to full solution across taps. Off shows the full solution upfront instead.
+        </p>
+        <div className="settings-size-pills">
+          <button
+            type="button"
+            className={`filter-pill${settings.progressiveReveal ? ' active' : ''}`}
+            onClick={() => settings.setProgressiveReveal(true)}
+          >
+            On
+          </button>
+          <button
+            type="button"
+            className={`filter-pill${!settings.progressiveReveal ? ' active' : ''}`}
+            onClick={() => settings.setProgressiveReveal(false)}
+          >
+            Off
+          </button>
+        </div>
+      </div>
+
+      <div className="stats-card">
+        <div className="stats-card-header">
           <h3>Multiple choice cards</h3>
         </div>
         <p className="settings-hint">
@@ -197,6 +233,58 @@ export function SettingsView({ settings }: SettingsViewProps) {
           </button>
         </div>
       </div>
+
+      <div className="stats-card settings-card-full">
+        <div className="stats-card-header">
+          <h3>Code font size</h3>
+          <span>{settings.codeFontSize}px</span>
+        </div>
+        <div className="settings-size-pills">
+          {CODE_FONT_SIZES.map((size) => (
+            <button
+              key={size}
+              type="button"
+              className={`filter-pill${settings.codeFontSize === size ? ' active' : ''}`}
+              onClick={() => settings.setCodeFontSize(size)}
+            >
+              {SIZE_LABELS[size]}
+            </button>
+          ))}
+        </div>
+        <pre className="solution-code settings-preview">
+          <code>{SAMPLE_CODE}</code>
+        </pre>
+      </div>
+
+      {excluded.excludedIds.length > 0 && (
+        <div className="stats-card settings-card-full">
+          <div className="stats-card-header">
+            <h3>Excluded problems</h3>
+            <span>{excluded.excludedIds.length}</span>
+          </div>
+          <p className="settings-hint">Swiped down out of the review rotation. Tap to bring one back.</p>
+          <ul className="excluded-list">
+            {excluded.excludedIds.map((id) => {
+              const problem = PROBLEMS_BY_ID.get(id)
+              if (!problem) return null
+              return (
+                <li key={id} className="excluded-list-item">
+                  <span>{problem.title}</span>
+                  <button
+                    type="button"
+                    className="icon-button icon-button-sm"
+                    aria-label={`Restore ${problem.title} to the review rotation`}
+                    title="Restore"
+                    onClick={() => excluded.unexclude(id)}
+                  >
+                    <X size={14} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       <FeedbackForm />
     </div>
