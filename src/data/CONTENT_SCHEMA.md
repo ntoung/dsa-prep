@@ -120,20 +120,17 @@ export interface McqQuestion {
 `.solution-code` styling), with each option rendered as a code snippet
 rather than plain text.
 
-## Implementation checklist (not yet done)
+## Implementation checklist
 
-1. `src/types.ts`: add `Language`, `LanguageSolution`, `translations?`,
-   `CruxQuestion`, `cruxQuestions?`, and the `getSolution` helper (probably
-   in `src/lib/`, next to `spacedRepetition.ts`/`practiceQueue.ts`).
-2. `useSettings.ts`: add `codeLanguage: Language` (default `'python'`), same
-   pattern as `codeFontSize`. `SettingsView.tsx` gets a language picker -
-   safe to ship immediately since `getSolution`'s fallback means every
-   problem still renders correctly before any JavaScript content exists.
-3. `ProblemCard.tsx`, `LearnFlipCard.tsx`, and `LearnView.tsx`'s topic-row
-   copy/inline-expand switch from reading `problem.solutionCode` /
-   `problem.revealStages` directly to `getSolution(problem, settings.codeLanguage)`.
-4. `mcqGenerator.ts` + `MCQCard.tsx`: add the `'crux'` kind as described
-   above.
-5. Generation pipeline (external to this repo): author `translations.javascript`
-   incrementally per problem, and default new problems' first
-   `cruxQuestions` entry to the final revealStage's gap as described above.
+1. Done. `src/types.ts` has `Language`, `LanguageSolution`, `translations?`,
+   `CruxQuestion`, `cruxQuestions?`, and `getSolution` lives in `src/lib/getSolution.ts`.
+2. Done. `useSettings.ts` has `codeLanguage: Language` (default `'python'`),
+   and `SettingsView.tsx` has the language picker.
+3. Done. `ProblemCard.tsx`, `LearnFlipCard.tsx`, and `LearnView.tsx` all read
+   through `getSolution(problem, settings.codeLanguage)`.
+4. Not started. `mcqGenerator.ts` + `MCQCard.tsx` still need the `'crux'` kind
+   described above.
+5. `translations.javascript` is authored for all 150 problems (code +
+   revealStages, mirroring each problem's Python structure). `cruxQuestions`
+   has not been started for any problem - still needs item 4 above to be
+   useful, since nothing reads `cruxQuestions` yet.
