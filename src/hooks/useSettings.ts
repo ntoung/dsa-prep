@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Difficulty, Language, PracticeMode } from './types'
-import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
-import { PROBLEM_LISTS } from './data/problemLists'
+import type { Difficulty, Language, PracticeMode } from '../types'
+import { loadVersioned, saveVersioned, type Migration } from '../lib/versionedStorage'
+import { PROBLEM_LISTS } from '../data/problemLists'
 
 const SETTINGS_KEY = 'dsa-prep:settings'
-const SETTINGS_VERSION = 5
+const SETTINGS_VERSION = 6
 
 export const CODE_FONT_SIZES = [10, 12, 14, 16, 18, 20] as const
 const DEFAULT_CODE_FONT_SIZE = 14
@@ -42,6 +42,11 @@ interface Settings {
   // Answering one grades the underlying problem via the same Leitner
   // promote/demote a swipe would - not a parallel tracking mechanism.
   enableMcq: boolean
+  // Sprinkles occasional pattern-lesson interstitials (Learn's own
+  // Recognize/Template/Tips content, not new/duplicated text) into the
+  // Swipe deck. Purely educational - dismissing one never touches Leitner
+  // state or the daily goal, same read-only posture as the Learn tab.
+  enablePatternCards: boolean
   // Which language's solution to display. Safe to set to any Language even
   // before every problem has a translation - getSolution() falls back to
   // Python for problems that don't have this language yet.
@@ -52,8 +57,9 @@ interface Settings {
 // rest of the object - this doubles as the v0 -> v1 migration for settings
 // saved before versioning existed, the v1 -> v2 migration that added
 // enabledLists, the v2 -> v3 migration that added enableMcq, the v3 ->
-// v4 migration that added codeLanguage, and the v4 -> v5 migration that
-// added progressiveReveal (see versionedStorage.ts).
+// v4 migration that added codeLanguage, the v4 -> v5 migration that added
+// progressiveReveal, and the v5 -> v6 migration that added
+// enablePatternCards (see versionedStorage.ts).
 function normalizeSettings(data: unknown): Settings {
   const parsed = (data ?? {}) as Partial<Settings>
   const enabledLists = Array.isArray(parsed.enabledLists)
@@ -71,6 +77,7 @@ function normalizeSettings(data: unknown): Settings {
     progressiveReveal: parsed.progressiveReveal ?? true,
     enabledLists: enabledLists.length > 0 ? enabledLists : DEFAULT_ENABLED_LISTS,
     enableMcq: parsed.enableMcq ?? true,
+    enablePatternCards: parsed.enablePatternCards ?? true,
     codeLanguage: parsed.codeLanguage && LANGUAGES.includes(parsed.codeLanguage) ? parsed.codeLanguage : DEFAULT_CODE_LANGUAGE,
   }
 }
@@ -81,6 +88,7 @@ const SETTINGS_MIGRATIONS: Migration<Settings>[] = [
   { version: 3, migrate: normalizeSettings },
   { version: 4, migrate: normalizeSettings },
   { version: 5, migrate: normalizeSettings },
+  { version: 6, migrate: normalizeSettings },
 ]
 
 function loadSettings(): Settings {
@@ -130,6 +138,10 @@ export function useSettings() {
     setSettings((prev) => ({ ...prev, enableMcq }))
   }, [])
 
+  const setEnablePatternCards = useCallback((enablePatternCards: boolean) => {
+    setSettings((prev) => ({ ...prev, enablePatternCards }))
+  }, [])
+
   const setCodeLanguage = useCallback((codeLanguage: Language) => {
     setSettings((prev) => ({ ...prev, codeLanguage }))
   }, [])
@@ -153,6 +165,7 @@ export function useSettings() {
     setRevealSolutionOnFlip,
     setProgressiveReveal,
     setEnableMcq,
+    setEnablePatternCards,
     setCodeLanguage,
     toggleList,
   }

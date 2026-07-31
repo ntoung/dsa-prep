@@ -1,87 +1,42 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
-import { Ban, Check, Flame, PartyPopper, RotateCcw, Search } from 'lucide-react'
+import { Ban, Check, Flame, NotepadText, PartyPopper, RotateCcw, Search } from 'lucide-react'
 import problemsData from '../data/problems.json'
 import type { Problem } from '../types'
-import { buildPracticeQueue } from '../lib/practiceQueue'
-import { averageStageByCategory } from '../lib/categoryStats'
-import { isProblemInEnabledLists } from '../data/problemLists'
-import { getProblemIdFromUrl, setProblemIdInUrl } from '../lib/problemQueryParam'
-import { SHORTCUTS } from '../lib/keyboardShortcuts'
-import { useKeyboardShortcuts, type ShortcutBinding } from '../useKeyboardShortcuts'
+import { setProblemIdInUrl } from '../lib/problemQueryParam'
+import { useSwipeShortcuts } from '../hooks/useSwipeShortcuts'
 import { ProblemCard, type ProblemCardHandle } from './ProblemCard'
 import { MCQCard } from './MCQCard'
-import { NotesPanel } from './NotesPanel'
+import { PatternCard, type PatternCardHandle } from './PatternCard'
+import { NotesPanelHost } from './NotesPanelHost'
 import { ProblemSearch } from './ProblemSearch'
-import type { useReviewState } from '../useReviewState'
-import type { useSettings } from '../useSettings'
-import type { useExcludedProblems } from '../useExcludedProblems'
-import type { useNotes } from '../useNotes'
+import { LESSONS } from '../data/lessons'
+import type { useReviewState } from '../hooks/useReviewState'
+import type { useSettings } from '../hooks/useSettings'
+import type { useExcludedProblems } from '../hooks/useExcludedProblems'
+import type { useNotes } from '../hooks/useNotes'
+import { usePracticeSession } from '../hooks/usePracticeSession'
 
 const ALL_PROBLEMS = problemsData as Problem[]
 const PROBLEMS_BY_ID = new Map(ALL_PROBLEMS.map((p) => [p.id, p]))
+const LESSONS_BY_CATEGORY = new Map(LESSONS.map((lesson) => [lesson.category as string, lesson]))
 const GOAL_TOAST_DURATION_MS = 3000
-// Every Nth already-reviewed due card becomes an MCQ instead of a flip card
-// - a fixed cadence rather than a settings knob, same style as the
-// STICKINESS/JITTER_WINDOW constants in practiceQueue.ts.
-const MCQ_INTERVAL = 5
+// How many cards later a "revisit" pattern card gets re-spliced back in -
+// session-only, not persisted, since there's no Leitner record for a
+// category to schedule a real due date against.
+const PATTERN_REVISIT_DELAY = 5
 
 interface SwipeReviewProps {
   review: ReturnType<typeof useReviewState>
   settings: ReturnType<typeof useSettings>
   excluded: ReturnType<typeof useExcludedProblems>
   notes: ReturnType<typeof useNotes>
+  onOpenGlobalNote: () => void
+  session: ReturnType<typeof usePracticeSession>
 }
 
-// Undo has to span two independent pieces of state (the Leitner schedule and
-// the excluded-ids list), so SwipeReview tracks which kind of action was
-// last taken instead of just delegating to review.undo() - see handleUndo.
-type LastAction = { kind: 'review'; id: string } | { kind: 'exclude'; id: string }
-
-interface QueueItem {
-  id: string
-  mode: 'card' | 'mcq'
-}
-
-export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewProps) {
-  const [queueItems, setQueueItems] = useState<QueueItem[]>(() => {
-    const due = ALL_PROBLEMS.filter(
-      (p) =>
-        review.isDue(p.id) &&
-        !excluded.isExcluded(p.id) &&
-        settings.enabledDifficulties.includes(p.difficulty) &&
-        isProblemInEnabledLists(p, settings.enabledLists),
-    )
-    const weaknessByCategory = averageStageByCategory(ALL_PROBLEMS, review.reviewState)
-    const orderedIds = buildPracticeQueue(
-      due,
-      settings.practiceMode,
-      (id) => review.reviewState[id]?.dueAt,
-      Math.random,
-      (category) => weaknessByCategory.get(category) ?? 0,
-    )
-    // Never quiz on a problem seen for the first time - only cards already
-    // reviewed at least once are eligible, counted independently of raw queue
-    // position so the interval isn't thrown off by early first-time cards.
-    let eligibleCount = 0
-    const items: QueueItem[] = orderedIds.map((id) => {
-      if (!settings.enableMcq || !review.isReviewed(id)) return { id, mode: 'card' }
-      eligibleCount++
-      return { id, mode: eligibleCount % MCQ_INTERVAL === 0 ? 'mcq' : 'card' }
-    })
-
-    // A refresh should land back on whatever problem was on top before -
-    // bring it back to the front of the queue (never as an mcq - a refresh
-    // shouldn't gamble the user into a quiz on the card they were mid-review
-    // on) rather than re-rolling a fresh order.
-    const requestedId = getProblemIdFromUrl()
-    if (requestedId && PROBLEMS_BY_ID.has(requestedId)) {
-      const withoutRequested = items.filter((item) => item.id !== requestedId)
-      return [{ id: requestedId, mode: 'card' }, ...withoutRequested]
-    }
-    return items
-  })
-  const [index, setIndex] = useState(0)
+export function SwipeReview({ review, settings, excluded, notes, onOpenGlobalNote, session }: SwipeReviewProps) {
+  const { queueItems, setQueueItems, index, setIndex, actionStack, setActionStack } = session
   const [topFlipped, setTopFlipped] = useState(settings.revealSolutionOnFlip)
   const [showGoalToast, setShowGoalToast] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -91,7 +46,10 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
   // fling()), instead of the ghost defaulting to sliding right regardless
   // of which button was pressed.
   const topCardRef = useRef<ProblemCardHandle>(null)
-  const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  // Separate ref for the same reason: only ever attached to the top card
+  // when it's a pattern card, since PatternCard's fling() has a narrower
+  // (left/right only) signature than ProblemCardHandle's.
+  const topPatternCardRef = useRef<PatternCardHandle>(null)
   const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
 
   const remaining = queueItems.slice(index, index + 3)
@@ -142,14 +100,14 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
   const handleReviewed = (id: string) => {
     topCardRef.current?.fling('left')
     review.markReviewed(id)
-    setLastAction({ kind: 'review', id })
+    setActionStack((prev) => [...prev, { kind: 'review', id }])
     setIndex((i) => i + 1)
   }
 
   const handleReviewedEasy = (id: string) => {
     topCardRef.current?.fling('left')
     review.markReviewedEasy(id)
-    setLastAction({ kind: 'review', id })
+    setActionStack((prev) => [...prev, { kind: 'review', id }])
     setIndex((i) => i + 1)
   }
 
@@ -158,48 +116,66 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
     // outcome regardless of which direction triggered it.
     topCardRef.current?.fling('right')
     review.markRevisit(id)
-    setLastAction({ kind: 'review', id })
+    setActionStack((prev) => [...prev, { kind: 'review', id }])
     setIndex((i) => i + 1)
   }
 
   const handleExclude = (id: string) => {
     topCardRef.current?.fling('down')
     excluded.exclude(id)
-    setLastAction({ kind: 'exclude', id })
+    setActionStack((prev) => [...prev, { kind: 'exclude', id }])
     setIndex((i) => i + 1)
   }
 
   const handleUndo = () => {
-    if (!lastAction) return
-    if (lastAction.kind === 'exclude') {
-      excluded.unexclude(lastAction.id)
-    } else {
+    const action = actionStack[actionStack.length - 1]
+    if (!action) return
+    if (action.kind === 'exclude') {
+      excluded.unexclude(action.id)
+    } else if (action.kind === 'review') {
       review.undo()
     }
-    setLastAction(null)
+    // 'pattern' has nothing persisted to revert - rewinding the index below
+    // is the whole undo. Popping just the stack's current top (rather than
+    // clearing it) is what lets repeated undo calls walk back through
+    // several consecutive actions in one session.
+    setActionStack((prev) => prev.slice(0, -1))
     setIndex((i) => Math.max(0, i - 1))
   }
 
-  // Keyboard equivalents of the swipe/tap gestures - only meaningful for a
-  // real flip card on top (not the empty state or an MCQ card, which has its
-  // own answer-selection interaction instead of these actions). Undo stays
-  // available regardless, same as its icon button does.
-  const shortcutBindings: ShortcutBinding[] = []
-  if (topId && topMode === 'card') {
-    shortcutBindings.push(
-      { def: SHORTCUTS.markReviewed, handler: () => handleReviewed(topId) },
-      { def: SHORTCUTS.revisit, handler: () => handleRevisit(topId) },
-      { def: SHORTCUTS.exclude, handler: () => handleExclude(topId) },
-      { def: SHORTCUTS.flip, handler: () => topCardRef.current?.toggleFlip() },
-      { def: SHORTCUTS.revealPrev, handler: () => topCardRef.current?.stepReveal('prev') },
-      { def: SHORTCUTS.revealNext, handler: () => topCardRef.current?.stepReveal('next') },
-      { def: SHORTCUTS.toggleNotes, handler: () => setNotesOpenFor(topId) },
-    )
+  const handlePatternDismiss = () => {
+    topPatternCardRef.current?.fling('left')
+    setActionStack((prev) => [...prev, { kind: 'pattern' }])
+    setIndex((i) => i + 1)
   }
-  if (lastAction) {
-    shortcutBindings.push({ def: SHORTCUTS.undo, handler: handleUndo })
+
+  const handlePatternRevisit = (category: string) => {
+    topPatternCardRef.current?.fling('right')
+    // Ephemeral re-splice, same idea as jumpToProblem's - not persisted,
+    // since a category has no Leitner record to schedule a real due date
+    // against. Clamped to the current queue length in case it's shorter
+    // than the delay (e.g. near the end of a session).
+    setQueueItems((prev) => {
+      const insertAt = Math.min(prev.length, index + 1 + PATTERN_REVISIT_DELAY)
+      const next = [...prev]
+      next.splice(insertAt, 0, { id: category, mode: 'pattern' })
+      return next
+    })
+    setActionStack((prev) => [...prev, { kind: 'pattern' }])
+    setIndex((i) => i + 1)
   }
-  useKeyboardShortcuts(shortcutBindings)
+
+  useSwipeShortcuts({
+    topId,
+    topMode,
+    canUndo: actionStack.length > 0,
+    topCardRef,
+    onReviewed: handleReviewed,
+    onRevisit: handleRevisit,
+    onExclude: handleExclude,
+    onUndo: handleUndo,
+    onOpenNotes: setNotesOpenFor,
+  })
 
   return (
     <div className="swipe-view">
@@ -211,15 +187,26 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
             onClose={() => setSearchOpen(false)}
           />
         ) : (
-          <button
-            type="button"
-            className="icon-button icon-button-sm"
-            aria-label="Find a problem"
-            title="Find a problem"
-            onClick={() => setSearchOpen(true)}
-          >
-            <Search size={16} strokeWidth={2} aria-hidden="true" />
-          </button>
+          <>
+            <button
+              type="button"
+              className="icon-button icon-button-sm"
+              aria-label="Find a problem"
+              title="Find a problem"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="icon-button icon-button-sm"
+              aria-label="Open notepad"
+              title="Notepad"
+              onClick={onOpenGlobalNote}
+            >
+              <NotepadText size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </>
         )}
       </div>
 
@@ -257,6 +244,23 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
             <AnimatePresence>
               {remaining.map((item, i) => {
                 const id = item.id
+                if (item.mode === 'pattern') {
+                  const lesson = LESSONS_BY_CATEGORY.get(id)
+                  if (!lesson) return null
+                  return (
+                    <PatternCard
+                      key={id}
+                      ref={i === 0 ? topPatternCardRef : undefined}
+                      lesson={lesson}
+                      isTop={i === 0}
+                      stackDepth={i}
+                      onDismiss={handlePatternDismiss}
+                      onRevisit={() => handlePatternRevisit(id)}
+                      canUndo={i === 0 ? actionStack.length > 0 : false}
+                      onUndo={i === 0 ? handleUndo : undefined}
+                    />
+                  )
+                }
                 const problem = PROBLEMS_BY_ID.get(id)
                 if (!problem) return null
                 if (item.mode === 'mcq') {
@@ -269,7 +273,7 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
                       stackDepth={i}
                       onCorrect={() => handleReviewed(id)}
                       onIncorrect={() => handleRevisit(id)}
-                      canUndo={i === 0 ? lastAction !== null : false}
+                      canUndo={i === 0 ? actionStack.length > 0 : false}
                       onUndo={i === 0 ? handleUndo : undefined}
                     />
                   )
@@ -288,7 +292,7 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
                     onRevisit={() => handleRevisit(id)}
                     onExclude={() => handleExclude(id)}
                     onFlipChange={i === 0 ? setTopFlipped : undefined}
-                    canUndo={i === 0 ? lastAction !== null : false}
+                    canUndo={i === 0 ? actionStack.length > 0 : false}
                     onUndo={i === 0 ? handleUndo : undefined}
                     onOpenNotes={i === 0 ? () => setNotesOpenFor(id) : undefined}
                     hasNote={notes.hasNote(id)}
@@ -299,7 +303,7 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
                 )
               })}
             </AnimatePresence>
-            {!topFlipped && topMode !== 'mcq' && (
+            {!topFlipped && topMode === 'card' && (
               <div className="swipe-actions">
                 <button
                   type="button"
@@ -330,23 +334,38 @@ export function SwipeReview({ review, settings, excluded, notes }: SwipeReviewPr
                 </button>
               </div>
             )}
+            {topMode === 'pattern' && (
+              <div className="swipe-actions">
+                <button
+                  type="button"
+                  className="icon-button icon-button-warning"
+                  aria-label="Show this pattern again soon"
+                  title="Show again soon"
+                  onClick={() => handlePatternRevisit(topId)}
+                >
+                  <RotateCcw size={24} strokeWidth={2} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button icon-button-positive"
+                  aria-label="Got it"
+                  title="Got it"
+                  onClick={handlePatternDismiss}
+                >
+                  <Check size={26} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {notesOpenFor &&
-        (() => {
-          const noteProblem = PROBLEMS_BY_ID.get(notesOpenFor)
-          if (!noteProblem) return null
-          return (
-            <NotesPanel
-              problem={noteProblem}
-              value={notes.getNote(notesOpenFor)}
-              onChange={(text) => notes.setNote(notesOpenFor, text)}
-              onClose={() => setNotesOpenFor(null)}
-            />
-          )
-        })()}
+      <NotesPanelHost
+        problemId={notesOpenFor}
+        problems={PROBLEMS_BY_ID}
+        notes={notes}
+        onClose={() => setNotesOpenFor(null)}
+      />
     </div>
   )
 }

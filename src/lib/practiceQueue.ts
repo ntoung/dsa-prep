@@ -33,8 +33,11 @@ function shuffle<T>(items: T[], random: () => number): T[] {
 // Sorts categories weakest-first, but each one gets a random score scaled by
 // its weakness rank so the order stays a tendency (like STICKINESS/
 // JITTER_WINDOW elsewhere in this file) rather than a rigid ranking that
-// would drill the same "weakest" category first in every session.
-function weightedShuffleByWeakness(
+// would drill the same "weakest" category first in every session. Exported
+// for SwipeReview's pattern-card cadence, which needs the same "weak means
+// the same thing everywhere" ordering over the 18 Learn topics rather than a
+// second weighting formula.
+export function weightedShuffleByWeakness(
   categories: string[],
   weaknessOf: (category: string) => number,
   random: () => number,
@@ -46,6 +49,30 @@ function weightedShuffleByWeakness(
     .map((category) => ({ category, score: random() * ((rankOf.get(category) ?? 0) + 1) }))
     .sort((a, b) => a.score - b.score)
     .map(({ category }) => category)
+}
+
+// Weighted-random single pick, biased toward weaker categories. Unlike
+// weightedShuffleByWeakness's full cycle (which guarantees every category
+// appears once before any repeat), this can draw the same weak category
+// several times in a row - used for the pattern-card cadence, where the
+// goal is surfacing the weakest categories more often, not covering all 18.
+export function pickWeightedByWeakness(
+  categories: string[],
+  weaknessOf: (category: string) => number,
+  random: () => number,
+): string {
+  const weaknesses = categories.map(weaknessOf)
+  const maxWeakness = Math.max(...weaknesses)
+  // +1 so even the strongest category keeps some chance of being picked,
+  // rather than a weight of 0 excluding it outright.
+  const weights = weaknesses.map((w) => maxWeakness - w + 1)
+  const total = weights.reduce((sum, w) => sum + w, 0)
+  let roll = random() * total
+  for (let i = 0; i < categories.length; i++) {
+    roll -= weights[i]
+    if (roll <= 0) return categories[i]
+  }
+  return categories[categories.length - 1]
 }
 
 function groupByCategory(problems: Problem[]): Map<string, Problem[]> {

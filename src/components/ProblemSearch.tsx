@@ -1,7 +1,7 @@
 import { Search, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Problem } from '../types'
-import { useEscapeToClose } from '../useEscapeToClose'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 const MAX_RESULTS = 8
 

@@ -19,7 +19,7 @@ Four bottom-nav tabs:
 
 - **Swipe** — the core review loop.
 `ProblemCard.tsx` + `SwipeReview.tsx`, driven by a `framer-motion` drag gesture.
-Backed by a lightweight Leitner spaced-repetition scheduler (`src/lib/spacedRepetition.ts`), persisted via `useReviewState.ts` to `localStorage`.
+Backed by a lightweight Leitner spaced-repetition scheduler (`src/lib/spacedRepetition.ts`), persisted via `src/hooks/useReviewState.ts` to `localStorage`.
 A swipe past `SWIPE_THRESHOLD_EASY` (further than a plain pass) grades the card "easy" — `promote()` takes an optional `stages` argument to jump two Leitner stages instead of one — with a MASTERED stamp crossfading in as the visual cue for the tier during the drag itself.
 When recall mode (`revealSolutionOnFlip`) and the "Progressive reveal" setting are both on, a problem with `revealStages` in `problems.json` shows a skeleton-to-solution build-up across taps instead of jumping straight from prompt to full solution — falls back to a single reveal when a problem has none authored yet or when progressive reveal is off.
 Occasional already-reviewed due cards become a multiple-choice quiz (`MCQCard.tsx` + `src/lib/mcqGenerator.ts`) instead of a flip card, at a fixed cadence (`MCQ_INTERVAL` in `SwipeReview.tsx`) — pattern-recognition or complexity-recall questions, generated from the same `problems.json` content, gated behind the "Multiple choice cards" Settings toggle.
@@ -28,18 +28,18 @@ Each is written so that reading it equips you to solve *any* problem in that cat
 `LearnView.tsx` has a search box (filters by category name or a substring match inside the lesson text) above the topic list.
 Tapping a topic opens a full-screen detail overlay (Recognize/Template/Tips plus every problem in that category); tapping a problem opens a second full-screen overlay with a flip card.
 Both overlays are `position: fixed` (z-index 400/500, above `.goal-toast`'s 300) so they cover `BottomNav` with no changes to `App.tsx`.
-Browser/hardware back button closes one overlay level at a time via `history.pushState`/`popstate` in `LearnView.tsx` — see the *Consumed-ref comments there before touching that logic, it's there specifically to avoid double-closing or over-popping.
+Browser/hardware back button closes one overlay level at a time via `useOverlayHistory` (`src/hooks/useOverlayHistory.ts`, mirroring `useEscapeToClose`'s shared-stack shape) — read its comments before touching that logic, it's there specifically to avoid double-closing or over-popping.
 The flip card (`LearnFlipCard.tsx`) deliberately duplicates `ProblemCard.tsx`'s front/back JSX rather than sharing a component — see "Gesture & scroll constraints" below for why `ProblemCard.tsx` itself should stay untouched.
 This tab is read-only reference and never writes to the spaced-repetition review state.
 - **Stats** — streak, daily goal progress, and a per-category coverage heatmap (a grid of small cells, one per problem, shaded by spaced-repetition mastery stage) in `StatsView.tsx`.
 A "Focus areas" card surfaces the weakest categories you've actually started (via `averageStageByCategory` in `src/lib/categoryStats.ts`, shared with the practice queue's weakness-weighted category ordering so "weak" means the same thing in both places) — untouched categories are excluded so they don't all tie for weakest.
-- **Settings** — code font size (including an XS 10px option), daily goal, difficulty filter, problem list selection, practice mode, solution-reveal timing, progressive reveal (skeleton-to-solution stage stepping vs. full solution upfront), and multiple-choice card frequency, via `useSettings.ts`.
+- **Settings** — code font size (including an XS 10px option), daily goal, difficulty filter, problem list selection, practice mode, solution-reveal timing, progressive reveal (skeleton-to-solution stage stepping vs. full solution upfront), and multiple-choice card frequency, via `src/hooks/useSettings.ts`.
 Also a bug/feature feedback form (`FeedbackForm.tsx`) that POSTs straight to a Google Apps Script Web App, which appends a row to a Sheet — see `google-apps-script/README.md`.
 This is the one deliberate exception to "no backend": no server we host or maintain, just a `fetch` to Google's infrastructure, and it degrades to rendering nothing if `FEEDBACK_ENDPOINT` isn't set.
 `FEEDBACK_ENDPOINT`/`FEEDBACK_SECRET` are read via `import.meta.env` without Vite's default `VITE_` prefix — `vite.config.ts` sets `envPrefix: 'FEEDBACK_'` instead, since these are the only two client-exposed env vars this app has.
 
 **Data:** `src/data/problems.json` holds all 150 problems, each with a full write-up — summary, approach, walkthrough, complexity, pitfalls, and a Python solution.
-Each problem's `id` is a short slug matching its LeetCode URL (e.g. `"two-sum"`), never a uuid — it's the stable key into `ReviewState` (`useReviewState.ts`) and into every list in `src/data/problemLists.ts`.
+Each problem's `id` is a short slug matching its LeetCode URL (e.g. `"two-sum"`), never a uuid — it's the stable key into `ReviewState` (`src/hooks/useReviewState.ts`) and into every list in `src/data/problemLists.ts`.
 
 **Problem lists:** `src/data/problemLists.ts` defines named curated subsets (NeetCode 150, Blind 75, ...) as arrays of *existing* problem ids, never duplicated content — a list with `problemIds` omitted means "every problem" (NeetCode 150, the full authored set). Because both lists reference the same `id` for a shared problem, review history (`ReviewRecord.reviewCount`, Leitner stage) is automatically shared across lists with no extra bookkeeping. Adding a new list only works today if every one of its problems already exists in `problems.json`; a list needing new problems is a content-authoring task first.
 
@@ -50,7 +50,7 @@ Because there's no server copy, `localStorage` has to be treated as the only cop
 
 ### Versioned schema for localStorage
 
-Every persisted entity (`useSettings.ts`, `useReviewState.ts`) is loaded/saved through `src/lib/versionedStorage.ts`, which wraps the value as `{ version, data }` and never silently resets to defaults on a shape mismatch — unrecognized or corrupt data is preserved under a `<key>:backup` key instead of being overwritten.
+Every persisted entity (`src/hooks/useSettings.ts`, `src/hooks/useReviewState.ts`) is loaded/saved through `src/lib/versionedStorage.ts`, which wraps the value as `{ version, data }` and never silently resets to defaults on a shape mismatch — unrecognized or corrupt data is preserved under a `<key>:backup` key instead of being overwritten.
 **Whenever a persisted shape changes (renamed/removed/re-typed field, new required field, changed enum values), bump that entity's `*_VERSION` constant and add a `Migration` entry that transforms the old shape into the new one.**
 Do not just add the field with an in-place default in the load function — that's what silently wiped data before this existed.
 

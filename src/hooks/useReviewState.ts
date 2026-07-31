@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { demote, isDue as isRecordDue, isReviewed as isRecordReviewed, newRecord, promote } from './lib/spacedRepetition'
-import type { ReviewRecord } from './lib/spacedRepetition'
-import { computeStreak, todayKey } from './lib/streak'
-import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
+import { demote, isDue as isRecordDue, isReviewed as isRecordReviewed, newRecord, promote } from '../lib/spacedRepetition'
+import type { ReviewRecord } from '../lib/spacedRepetition'
+import { computeStreak, todayKey } from '../lib/streak'
+import { loadVersioned, saveVersioned, type Migration } from '../lib/versionedStorage'
 
 const REVIEW_STATE_KEY = 'dsa-prep:review-state'
 const REVIEW_STATE_VERSION = 1
@@ -35,7 +35,7 @@ export interface ActivityLogEntry {
 
 type ActivityLog = ActivityLogEntry[]
 
-interface LastAction {
+interface HistoryEntry {
   id: string
   previousRecord: ReviewRecord | undefined
 }
@@ -94,7 +94,10 @@ export function useReviewState() {
   const [dailyActivity, setDailyActivity] = useState<DailyActivity>(() => loadDailyActivity())
   const [dailyProgress, setDailyProgress] = useState<DailyProgress>(() => loadDailyProgress(new Date()))
   const [activityLog, setActivityLog] = useState<ActivityLog>(() => loadActivityLog())
-  const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  // A stack (not just the single most recent entry) so undo can walk back
+  // through several consecutive actions in one session, not just the last
+  // one - session-only like the fields above, never persisted.
+  const [history, setHistory] = useState<HistoryEntry[]>([])
 
   useEffect(() => {
     saveVersioned(REVIEW_STATE_KEY, REVIEW_STATE_VERSION, reviewState)
@@ -131,7 +134,7 @@ export function useReviewState() {
         const next = [...prev, { problemId: id, outcome, timestamp: now.toISOString() }]
         return next.length > ACTIVITY_LOG_MAX_ENTRIES ? next.slice(next.length - ACTIVITY_LOG_MAX_ENTRIES) : next
       })
-      setLastAction({ id, previousRecord })
+      setHistory((prev) => [...prev, { id, previousRecord }])
     },
     [reviewState],
   )
@@ -159,13 +162,14 @@ export function useReviewState() {
   }, [])
 
   const undo = useCallback(() => {
-    if (!lastAction) return
+    const entry = history[history.length - 1]
+    if (!entry) return
     setReviewState((prev) => {
       const next = { ...prev }
-      if (lastAction.previousRecord) {
-        next[lastAction.id] = lastAction.previousRecord
+      if (entry.previousRecord) {
+        next[entry.id] = entry.previousRecord
       } else {
-        delete next[lastAction.id]
+        delete next[entry.id]
       }
       return next
     })
@@ -180,13 +184,14 @@ export function useReviewState() {
       }
       return { ...prev, [key]: current - 1 }
     })
-    // recordAction only ever appends, and undo only ever reverts the single
-    // most recent action (see LastAction above) - so the entry to remove is
-    // always whatever's currently last, regardless of the cap in recordAction
-    // having trimmed the front of the array since.
+    // recordAction only ever appends, and undo only ever pops the current
+    // top of `history` - so the entry to remove is always whatever's
+    // currently last, regardless of the cap in recordAction having trimmed
+    // the front of the array since. Repeated undo calls walk back through
+    // several consecutive actions this way, not just the most recent one.
     setActivityLog((prev) => prev.slice(0, -1))
-    setLastAction(null)
-  }, [lastAction])
+    setHistory((prev) => prev.slice(0, -1))
+  }, [history])
 
   const isReviewed = useCallback((id: string) => isRecordReviewed(reviewState[id]), [reviewState])
   const isDue = useCallback((id: string) => isRecordDue(reviewState[id], new Date()), [reviewState])
@@ -208,6 +213,6 @@ export function useReviewState() {
     markRevisit,
     toggleReviewed,
     undo,
-    canUndo: lastAction !== null,
+    canUndo: history.length > 0,
   }
 }

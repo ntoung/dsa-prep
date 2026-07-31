@@ -1,8 +1,18 @@
-import { animate, motion, useTransform, useMotionValue, type PanInfo } from 'framer-motion'
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Copy, ExternalLink, History, NotebookPen, Undo2 } from 'lucide-react'
+import { animate, motion, useTransform, useMotionValue, type MotionValue, type PanInfo } from 'framer-motion'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type WheelEvent,
+} from 'react'
+import { Check, ChevronLeft, ChevronRight, Copy, ExternalLink, History, NotebookPen } from 'lucide-react'
 import type { Language, Problem, RevealStage } from '../types'
 import { getSolution } from '../lib/getSolution'
+import { UndoButton } from './UndoButton'
 
 // Compact enough to sit inside the review-count badge alongside the count -
 // an absolute date (not relative/"2d ago") since that needs no recomputation
@@ -292,6 +302,27 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
     }
   }
 
+  // Wheel/trackpad scroll for the same content the pan gesture above scrolls
+  // via touch/mouse-drag - a separate input channel that never competes with
+  // the swipe gesture (a wheel event never starts or continues a card swipe),
+  // so this is safe to add without touching the pan logic or touch-action:
+  // none above. Unlike the pan handler, this never spills over into moving
+  // the card itself - it just clamps at the content's scroll edges, since a
+  // runaway wheel shouldn't accidentally exclude/revisit a problem.
+  const handleWheel = (
+    event: WheelEvent<HTMLDivElement>,
+    faceRef: RefObject<HTMLDivElement | null>,
+    contentRef: RefObject<HTMLDivElement | null>,
+    contentY: MotionValue<number>,
+  ) => {
+    const faceEl = faceRef.current
+    const contentEl = contentRef.current
+    if (!faceEl || !contentEl) return
+    const maxScroll = Math.max(0, contentEl.scrollHeight - faceEl.clientHeight)
+    if (maxScroll <= 0) return
+    contentY.set(Math.max(-maxScroll, Math.min(0, contentY.get() - event.deltaY)))
+  }
+
   const handlePanEnd = () => {
     if (!isTop) return
     const axis = axisLockRef.current
@@ -339,25 +370,7 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flipped, stageIndex])
 
-  const undoButton = isTop && canUndo && (
-    <button
-      type="button"
-      className="icon-button icon-button-sm card-top-actions-left"
-      aria-label="Undo last swipe"
-      title="Undo last swipe"
-      onPointerDownCapture={(e) => e.stopPropagation()}
-      onClickCapture={(e) => {
-        // stopPropagation() here prevents this click from ever reaching a
-        // separate bubble-phase onClick (React never dispatches it once
-        // propagation is stopped during capture) - so the action has to run
-        // right here instead of in a plain onClick handler.
-        e.stopPropagation()
-        onUndo?.()
-      }}
-    >
-      <Undo2 size={16} strokeWidth={2} aria-hidden="true" />
-    </button>
-  )
+  const undoButton = isTop && canUndo && <UndoButton onUndo={() => onUndo?.()} />
 
   const notesButton = isTop && onOpenNotes && (
     <button
@@ -380,7 +393,7 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
   const copyButton = isTop && (
     <button
       type="button"
-      className="icon-button icon-button-sm card-top-actions-right-3"
+      className="icon-button icon-button-sm card-solution-copy-button"
       aria-label={copied ? 'Solution copied' : 'Copy solution to clipboard'}
       title={copied ? 'Copied!' : 'Copy solution'}
       onPointerDownCapture={(e) => e.stopPropagation()}
@@ -459,10 +472,14 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
         <div className={`card-inner${flipped ? ' flipped' : ''}`}>
           <div className="card-face card-front" ref={frontFaceRef}>
             {undoButton}
-            {copyButton}
             {notesButton}
             {linkButton}
-            <motion.div className="card-face-content" ref={frontContentRef} style={{ y: frontContentY }}>
+            <motion.div
+              className="card-face-content"
+              ref={frontContentRef}
+              style={{ y: frontContentY }}
+              onWheel={(e) => handleWheel(e, frontFaceRef, frontContentRef, frontContentY)}
+            >
               <div className="card-front-header">
                 {reviewCount > 0 && (
                   <span
@@ -489,9 +506,12 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
                 />
                 <h2 className="card-title">{problem.title}</h2>
               </div>
-              <pre className="solution-code card-solution">
-                <code>{currentCode}</code>
-              </pre>
+              <div className="card-solution-wrap">
+                <pre className="solution-code card-solution">
+                  <code>{currentCode}</code>
+                </pre>
+                {copyButton}
+              </div>
               {stages ? (
                 <div className="card-stage-nav">
                   <button
@@ -533,8 +553,19 @@ export const ProblemCard = forwardRef<ProblemCardHandle, ProblemCardProps>(funct
           <div className="card-face card-back" ref={backFaceRef}>
             {undoButton}
             {linkButton}
-            <motion.div className="card-face-content" ref={backContentRef} style={{ y: backContentY }}>
-              <h2 className="card-title">{problem.title}</h2>
+            <motion.div
+              className="card-face-content"
+              ref={backContentRef}
+              style={{ y: backContentY }}
+              onWheel={(e) => handleWheel(e, backFaceRef, backContentRef, backContentY)}
+            >
+              <div className="card-title-row">
+                <span
+                  className={`difficulty-dot difficulty-dot-${problem.difficulty.toLowerCase()}`}
+                  aria-hidden="true"
+                />
+                <h2 className="card-title">{problem.title}</h2>
+              </div>
               <div className="detail-block">
                 <h3>Summary</h3>
                 <p>{problem.summary}</p>

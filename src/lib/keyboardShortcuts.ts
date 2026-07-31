@@ -19,6 +19,7 @@ export const SHORTCUTS = {
   revealPrev: { id: 'revealPrev', key: 'j', label: 'J', description: 'Previous reveal step' },
   revealNext: { id: 'revealNext', key: 'k', label: 'K', description: 'Next reveal step' },
   toggleNotes: { id: 'toggleNotes', key: 'n', label: 'N', description: 'Add or edit note' },
+  openGlobalNote: { id: 'openGlobalNote', key: 'g', label: 'G', description: 'Open notepad' },
 }
 
 export const ALL_SHORTCUTS: ShortcutDef[] = Object.values(SHORTCUTS)

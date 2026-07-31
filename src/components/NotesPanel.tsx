@@ -1,22 +1,22 @@
 import { X } from 'lucide-react'
-import type { Problem } from '../types'
-import { useEscapeToClose } from '../useEscapeToClose'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 interface NotesPanelProps {
-  problem: Problem
+  title: string
+  placeholder?: string
   value: string
   onChange: (text: string) => void
   onClose: () => void
 }
 
-export function NotesPanel({ problem, value, onChange, onClose }: NotesPanelProps) {
+export function NotesPanel({ title, placeholder, value, onChange, onClose }: NotesPanelProps) {
   useEscapeToClose(onClose)
 
   return (
     <div className="notes-overlay" onClick={onClose}>
       <div className="notes-panel" onClick={(e) => e.stopPropagation()}>
         <div className="notes-panel-header">
-          <h2>{problem.title}</h2>
+          <h2>{title}</h2>
           <button
             type="button"
             className="icon-button icon-button-sm"
@@ -31,7 +31,7 @@ export function NotesPanel({ problem, value, onChange, onClose }: NotesPanelProp
           className="notes-textarea"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Jot a mnemonic, gotcha, or reminder for this problem..."
+          placeholder={placeholder ?? 'Jot a mnemonic, gotcha, or reminder for this problem...'}
           autoFocus
         />
       </div>

@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
-import { Check, Undo2, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import type { Language, Problem } from '../types'
 import { buildMcqQuestion } from '../lib/mcqGenerator'
+import { UndoButton } from './UndoButton'
 
 const FEEDBACK_DURATION_MS = 900
 
@@ -36,21 +37,7 @@ export function MCQCard({ problem, language, isTop, stackDepth, onCorrect, onInc
     setTimeout(() => (isCorrect ? onCorrect() : onIncorrect()), FEEDBACK_DURATION_MS)
   }
 
-  const undoButton = isTop && canUndo && (
-    <button
-      type="button"
-      className="icon-button icon-button-sm card-top-actions-left"
-      aria-label="Undo last answer"
-      title="Undo last answer"
-      onPointerDownCapture={(e) => e.stopPropagation()}
-      onClickCapture={(e) => {
-        e.stopPropagation()
-        onUndo?.()
-      }}
-    >
-      <Undo2 size={16} strokeWidth={2} aria-hidden="true" />
-    </button>
-  )
+  const undoButton = isTop && canUndo && <UndoButton onUndo={() => onUndo?.()} label="Undo last answer" />
 
   // Practically unreachable - pattern-recognition always has 17 other
   // patterns to draw distractors from - but keeps this a safe no-op rather

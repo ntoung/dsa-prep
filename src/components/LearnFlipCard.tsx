@@ -63,7 +63,7 @@ export function LearnFlipCard({
   const copyButton = (
     <button
       type="button"
-      className="icon-button icon-button-sm card-top-actions-right-3"
+      className="icon-button icon-button-sm card-solution-copy-button"
       aria-label={copied ? 'Solution copied' : 'Copy solution to clipboard'}
       title={copied ? 'Copied!' : 'Copy solution'}
       onClick={(e) => {
@@ -83,7 +83,6 @@ export function LearnFlipCard({
     <div className="learn-flip-card" onClick={onToggleFlip}>
       <div className={`card-inner${flipped ? ' flipped' : ''}`}>
         <div className="card-face card-front">
-          {copyButton}
           {notesButton}
           {linkButton}
           <div className="card-front-header">
@@ -98,9 +97,12 @@ export function LearnFlipCard({
           </div>
           <h2 className="card-title">{problem.title}</h2>
           <p className="card-category">{problem.category}</p>
-          <pre className="solution-code card-solution">
-            <code>{code}</code>
-          </pre>
+          <div className="card-solution-wrap">
+            <pre className="solution-code card-solution">
+              <code>{code}</code>
+            </pre>
+            {copyButton}
+          </div>
           <p className="card-flip-hint">Tap card for explanation</p>
         </div>
         <div className="card-face card-back">

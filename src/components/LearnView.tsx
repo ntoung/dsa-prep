@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Ban,
   Check,
-  CheckCheck,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
@@ -14,24 +13,26 @@ import {
   Search,
   X,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import problemsData from '../data/problems.json'
-import { LESSONS, type Lesson } from '../data/lessons'
+import { LESSONS, type Lesson, type PatternSnippet } from '../data/lessons'
 import type { Problem } from '../types'
-import type { useReviewState } from '../useReviewState'
-import type { useExcludedProblems } from '../useExcludedProblems'
-import type { useNotes } from '../useNotes'
-import type { useSettings } from '../useSettings'
-import { useEscapeToClose } from '../useEscapeToClose'
+import type { useReviewState } from '../hooks/useReviewState'
+import type { useExcludedProblems } from '../hooks/useExcludedProblems'
+import type { useNotes } from '../hooks/useNotes'
+import type { useSettings } from '../hooks/useSettings'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
+import { useOverlayHistory } from '../hooks/useOverlayHistory'
 import { getSolution } from '../lib/getSolution'
 import { LearnFlipCard } from './LearnFlipCard'
-import { NotesPanel } from './NotesPanel'
+import { NotesPanelHost } from './NotesPanelHost'
 
 const ALL_PROBLEMS = problemsData as Problem[]
 const PROBLEMS_BY_ID = new Map(ALL_PROBLEMS.map((p) => [p.id, p]))
+const MAX_HEAT_LEVEL = 4
 
-function countByCategory(category: string): number {
-  return ALL_PROBLEMS.filter((p) => p.category === category).length
+function problemsByCategory(category: string): Problem[] {
+  return ALL_PROBLEMS.filter((p) => p.category === category)
 }
 
 function lessonMatchesQuery(lesson: Lesson, query: string): boolean {
@@ -91,6 +92,9 @@ export function LearnView({
   // Which row's copy-to-clipboard icon is showing its "copied" checkmark -
   // only one at a time makes sense, so a single id rather than a Set.
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null)
+  // Same idea, for the Patterns list's own code-copy button - a separate
+  // state since it's keyed by snippet name, not problem id.
+  const [copiedSnippetName, setCopiedSnippetName] = useState<string | null>(null)
   const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
 
   // Opens the topic overlay for a category handed off from elsewhere (e.g. the
@@ -134,6 +138,12 @@ export function LearnView({
   useEscapeToClose(closeProblem, activeProblemId !== null)
   useEscapeToClose(closeSearch, searchOpen)
 
+  // Same close functions as above, so the back button also closes one
+  // overlay level at a time - see useOverlayHistory for how stacked levels
+  // stay ordered without double-closing or over-popping.
+  useOverlayHistory(activeCategory, closeTopic)
+  useOverlayHistory(activeProblemId, closeProblem)
+
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -145,6 +155,7 @@ export function LearnView({
       return next
     })
   }
+
   const allExpanded = topicProblems.length > 0 && topicProblems.every((p) => expandedIds.has(p.id))
   const toggleExpandAll = () => {
     setExpandedIds(allExpanded ? new Set() : new Set(topicProblems.map((p) => p.id)))
@@ -155,6 +166,16 @@ export function LearnView({
     const timeout = setTimeout(() => setCopiedRowId(null), 1500)
     return () => clearTimeout(timeout)
   }, [copiedRowId])
+
+  useEffect(() => {
+    if (!copiedSnippetName) return
+    const timeout = setTimeout(() => setCopiedSnippetName(null), 1500)
+    return () => clearTimeout(timeout)
+  }, [copiedSnippetName])
+
+  const copyPatternCode = (snippet: PatternSnippet) => {
+    navigator.clipboard.writeText(snippet.code).then(() => setCopiedSnippetName(snippet.name))
+  }
 
   const copyRowSolution = (p: Problem) => {
     navigator.clipboard.writeText(getSolution(p, settings.codeLanguage).code).then(() => setCopiedRowId(p.id))
@@ -168,11 +189,6 @@ export function LearnView({
     review.markReviewed(activeProblem.id)
     closeProblem()
   }
-  const handleReviewedEasy = () => {
-    if (!activeProblem) return
-    review.markReviewedEasy(activeProblem.id)
-    closeProblem()
-  }
   const handleRevisit = () => {
     if (!activeProblem) return
     review.markRevisit(activeProblem.id)
@@ -183,57 +199,6 @@ export function LearnView({
     excluded.exclude(activeProblem.id)
     closeProblem()
   }
-
-  // Back-button/gesture support: push a history entry per open overlay level, and let a
-  // shared popstate listener close the topmost one instead of navigating away. The
-  // *Consumed refs stop the level effect's own cleanup from double-popping when the
-  // close already happened via a real popstate; isProgrammaticPopRef stops the reverse -
-  // our own history.back() call re-triggering itself as if the user pressed back.
-  const isProgrammaticPopRef = useRef(false)
-  const topicConsumedRef = useRef(false)
-  const problemConsumedRef = useRef(false)
-
-  useEffect(() => {
-    if (activeCategory === null) return
-    topicConsumedRef.current = false
-    history.pushState({ learnOverlay: 'topic' }, '')
-    return () => {
-      if (!topicConsumedRef.current) {
-        isProgrammaticPopRef.current = true
-        history.back()
-      }
-    }
-  }, [activeCategory])
-
-  useEffect(() => {
-    if (activeProblemId === null) return
-    problemConsumedRef.current = false
-    history.pushState({ learnOverlay: 'problem' }, '')
-    return () => {
-      if (!problemConsumedRef.current) {
-        isProgrammaticPopRef.current = true
-        history.back()
-      }
-    }
-  }, [activeProblemId])
-
-  useEffect(() => {
-    function onPopState() {
-      if (isProgrammaticPopRef.current) {
-        isProgrammaticPopRef.current = false
-        return
-      }
-      if (activeProblemId !== null) {
-        problemConsumedRef.current = true
-        setActiveProblemId(null)
-      } else if (activeCategory !== null) {
-        topicConsumedRef.current = true
-        setActiveCategory(null)
-      }
-    }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [activeCategory, activeProblemId])
 
   return (
     <div className="learn-view">
@@ -274,20 +239,67 @@ export function LearnView({
         )}
       </div>
 
+      <div className="stats-card-header learn-section-header">
+        <h3>Topics</h3>
+      </div>
       {filteredLessons.length === 0 ? (
         <p className="no-results">No topics match "{trimmedQuery}"</p>
       ) : (
         <div className="learn-list">
-          {filteredLessons.map((lesson) => (
-            <section className="learn-card" key={lesson.category}>
-              <button type="button" className="learn-card-header" onClick={() => openTopic(lesson.category)}>
-                <span className="learn-card-title">{highlightFirstMatch(lesson.category, trimmedQuery)}</span>
-                <span className="learn-card-count">{countByCategory(lesson.category)} problems</span>
-                <ChevronRight className="learn-card-chevron" size={16} strokeWidth={2} aria-hidden="true" />
-              </button>
-            </section>
-          ))}
+          {filteredLessons.map((lesson) => {
+            const problems = problemsByCategory(lesson.category)
+            return (
+              <section className="learn-card" key={lesson.category}>
+                <button type="button" className="learn-card-header" onClick={() => openTopic(lesson.category)}>
+                  <ChevronRight className="learn-card-chevron" size={16} strokeWidth={2} aria-hidden="true" />
+                  <span className="learn-card-title">{highlightFirstMatch(lesson.category, trimmedQuery)}</span>
+                  <span className="learn-card-count">{problems.length} problems</span>
+                  <div className="category-heat-row">
+                    {problems.map((problem) => {
+                      const stage = Math.min(review.reviewState[problem.id]?.stage ?? 0, MAX_HEAT_LEVEL)
+                      return <div key={problem.id} className={`heatmap-cell level-${stage}`} />
+                    })}
+                  </div>
+                </button>
+              </section>
+            )
+          })}
         </div>
+      )}
+
+      {!trimmedQuery && (
+        <>
+          <div className="stats-card-header learn-section-header">
+            <h3>Patterns</h3>
+          </div>
+          <div className="pattern-snippet-grid">
+            {LESSONS.flatMap((lesson) =>
+              lesson.snippets.map((snippet) => (
+                <div className="pattern-snippet-card" key={snippet.name}>
+                  <div className="topic-list-header">
+                    <h3>{snippet.name}</h3>
+                    <button
+                      type="button"
+                      className="icon-button icon-button-sm"
+                      aria-label={copiedSnippetName === snippet.name ? 'Code copied' : 'Copy code to clipboard'}
+                      title={copiedSnippetName === snippet.name ? 'Copied!' : 'Copy code'}
+                      onClick={() => copyPatternCode(snippet)}
+                    >
+                      {copiedSnippetName === snippet.name ? (
+                        <Check size={16} strokeWidth={2} aria-hidden="true" />
+                      ) : (
+                        <Copy size={16} strokeWidth={2} aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  <pre className="solution-code">
+                    <code>{snippet.code}</code>
+                  </pre>
+                </div>
+              )),
+            )}
+          </div>
+        </>
       )}
 
       <AnimatePresence>
@@ -493,15 +505,6 @@ export function LearnView({
                 >
                   <Check size={26} strokeWidth={2.5} aria-hidden="true" />
                 </button>
-                <button
-                  type="button"
-                  className="icon-button icon-button-positive"
-                  aria-label="Mark reviewed - easy, knew it instantly"
-                  title="Mark reviewed - easy"
-                  onClick={handleReviewedEasy}
-                >
-                  <CheckCheck size={24} strokeWidth={2.5} aria-hidden="true" />
-                </button>
               </div>
             </div>
             </motion.div>
@@ -509,19 +512,12 @@ export function LearnView({
         )}
       </AnimatePresence>
 
-      {notesOpenFor &&
-        (() => {
-          const noteProblem = PROBLEMS_BY_ID.get(notesOpenFor)
-          if (!noteProblem) return null
-          return (
-            <NotesPanel
-              problem={noteProblem}
-              value={notes.getNote(notesOpenFor)}
-              onChange={(text) => notes.setNote(notesOpenFor, text)}
-              onClose={() => setNotesOpenFor(null)}
-            />
-          )
-        })()}
+      <NotesPanelHost
+        problemId={notesOpenFor}
+        problems={PROBLEMS_BY_ID}
+        notes={notes}
+        onClose={() => setNotesOpenFor(null)}
+      />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { ALL_SHORTCUTS } from '../lib/keyboardShortcuts'
-import { useEscapeToClose } from '../useEscapeToClose'
+import { useEscapeToClose } from '../hooks/useEscapeToClose'
 
 interface KeyboardShortcutsOverlayProps {
   onClose: () => void

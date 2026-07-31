@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { matchesShortcutEvent, type ShortcutDef } from './lib/keyboardShortcuts'
+import { matchesShortcutEvent, type ShortcutDef } from '../lib/keyboardShortcuts'
 
 export interface ShortcutBinding {
   def: ShortcutDef

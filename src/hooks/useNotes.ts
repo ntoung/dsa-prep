@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
+import { loadVersioned, saveVersioned, type Migration } from '../lib/versionedStorage'
 
 const NOTES_KEY = 'dsa-prep:notes'
 const NOTES_VERSION = 1

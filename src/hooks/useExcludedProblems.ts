@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { loadVersioned, saveVersioned, type Migration } from './lib/versionedStorage'
+import { loadVersioned, saveVersioned, type Migration } from '../lib/versionedStorage'
 
 const EXCLUDED_KEY = 'dsa-prep:excluded-problems'
 const EXCLUDED_VERSION = 1
