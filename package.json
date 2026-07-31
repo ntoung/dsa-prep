@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lavish": "lavish-axi watch dsa-prep-live && vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "npm run build && vite preview",

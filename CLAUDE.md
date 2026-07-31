@@ -102,7 +102,9 @@ Don't sink excessive time re-diagnosing tunnel timeouts — a couple of retries 
 
 ## Review tooling
 
-Lavish (`lavish-axi`) is used in this project for HTML review artifacts (e.g. mocking up a UI change for sign-off before implementing it). On this machine, `lavish-axi` is globally `npm link`-ed to a local fork at `C:\Users\bish\Developer\lavish-axi` (fork: `github.com/ntoung/lavish-axi`, upstream: `github.com/kunchenguid/lavish-axi`) instead of the published npm package — so editing that fork and running `pnpm run build` there changes what every `lavish-axi` invocation does, on any project, immediately (no republish needed). This isn't referenced anywhere in dsa-prep's own `package.json` — it's a global tool, not something dsa-prep's app code or build depends on.
+Lavish (`lavish-axi`) is used in this project for HTML review artifacts (e.g. mocking up a UI change for sign-off before implementing it). On this machine, `lavish-axi` is globally `npm link`-ed to a local fork at `C:\Users\bish\Developer\lavish-axi` (fork: `github.com/ntoung/lavish-axi`, upstream: `github.com/kunchenguid/lavish-axi`) instead of the published npm package — so editing that fork and running `pnpm run build` there changes what every `lavish-axi` invocation does, on any project, immediately (no republish needed).
+
+`npm run dev:lavish` and the `lavishLive` plugin in `vite.config.ts` additionally wire this app's own dev server into a live, in-app annotation overlay (see the fork's `docs/adr/0001-live-app-annotation-overlay.md`) instead of Lavish's usual static-HTML-artifact mode — dev-only (`apply: 'serve'`) and fails soft if the Lavish server isn't running, so plain `npm run dev` and `npm run build` are unaffected either way.
 
 ## Foundational stances
 
