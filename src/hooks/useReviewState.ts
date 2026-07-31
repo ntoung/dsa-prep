@@ -1,29 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { demote, isDue as isRecordDue, isReviewed as isRecordReviewed, newRecord, promote } from '../lib/spacedRepetition'
 import type { ReviewRecord } from '../lib/spacedRepetition'
-import { computeStreak, todayKey } from '../lib/streak'
+import { computeStreak, dailyCountsFromLog, todayKey } from '../lib/streak'
 import { loadVersioned, saveVersioned, type Migration } from '../lib/versionedStorage'
 
 const REVIEW_STATE_KEY = 'dsa-prep:review-state'
 const REVIEW_STATE_VERSION = 1
-const DAILY_ACTIVITY_KEY = 'dsa-prep:daily-activity'
-const DAILY_ACTIVITY_VERSION = 1
-const DAILY_PROGRESS_KEY = 'dsa-prep:daily-progress'
-const DAILY_PROGRESS_VERSION = 1
+// Retired in favor of deriving daily counts from ACTIVITY_LOG_KEY below -
+// only kept around as string literals so useReviewState can clear out
+// whatever an existing install still has on disk under these keys.
+const RETIRED_DAILY_ACTIVITY_KEY = 'dsa-prep:daily-activity'
+const RETIRED_DAILY_PROGRESS_KEY = 'dsa-prep:daily-progress'
 const ACTIVITY_LOG_KEY = 'dsa-prep:activity-log'
 const ACTIVITY_LOG_VERSION = 1
-// Bounds localStorage growth over months of daily use - oldest entries drop
-// off first once the cap is hit.
-const ACTIVITY_LOG_MAX_ENTRIES = 2000
 
 type ReviewState = Record<string, ReviewRecord>
-// date key (YYYY-MM-DD) -> number of review actions taken that day
-type DailyActivity = Record<string, number>
-
-interface DailyProgress {
-  date: string
-  count: number
-}
 
 export type ReviewOutcome = 'reviewed' | 'reviewed-easy' | 'revisit'
 
@@ -50,35 +41,6 @@ function loadReviewState(): ReviewState {
   return loadVersioned(REVIEW_STATE_KEY, REVIEW_STATE_VERSION, REVIEW_STATE_MIGRATIONS, () => ({}))
 }
 
-function normalizeDailyActivity(data: unknown): DailyActivity {
-  return data && typeof data === 'object' ? (data as DailyActivity) : {}
-}
-
-const DAILY_ACTIVITY_MIGRATIONS: Migration<DailyActivity>[] = [{ version: 1, migrate: normalizeDailyActivity }]
-
-function loadDailyActivity(): DailyActivity {
-  return loadVersioned(DAILY_ACTIVITY_KEY, DAILY_ACTIVITY_VERSION, DAILY_ACTIVITY_MIGRATIONS, () => ({}))
-}
-
-function normalizeDailyProgress(data: unknown): DailyProgress {
-  const parsed = data as Partial<DailyProgress> | null
-  if (parsed && typeof parsed.date === 'string' && typeof parsed.count === 'number') {
-    return { date: parsed.date, count: parsed.count }
-  }
-  // An invalid/missing date never matches todayKey(), so the freshness
-  // check in loadDailyProgress below resets it to a fresh day.
-  return { date: '', count: 0 }
-}
-
-const DAILY_PROGRESS_MIGRATIONS: Migration<DailyProgress>[] = [{ version: 1, migrate: normalizeDailyProgress }]
-
-function loadDailyProgress(now: Date): DailyProgress {
-  const stored = loadVersioned(DAILY_PROGRESS_KEY, DAILY_PROGRESS_VERSION, DAILY_PROGRESS_MIGRATIONS, () =>
-    normalizeDailyProgress(null),
-  )
-  return stored.date === todayKey(now) ? stored : { date: todayKey(now), count: 0 }
-}
-
 function normalizeActivityLog(data: unknown): ActivityLog {
   return Array.isArray(data) ? (data as ActivityLog) : []
 }
@@ -91,8 +53,6 @@ function loadActivityLog(): ActivityLog {
 
 export function useReviewState() {
   const [reviewState, setReviewState] = useState<ReviewState>(() => loadReviewState())
-  const [dailyActivity, setDailyActivity] = useState<DailyActivity>(() => loadDailyActivity())
-  const [dailyProgress, setDailyProgress] = useState<DailyProgress>(() => loadDailyProgress(new Date()))
   const [activityLog, setActivityLog] = useState<ActivityLog>(() => loadActivityLog())
   // A stack (not just the single most recent entry) so undo can walk back
   // through several consecutive actions in one session, not just the last
@@ -104,16 +64,20 @@ export function useReviewState() {
   }, [reviewState])
 
   useEffect(() => {
-    saveVersioned(DAILY_ACTIVITY_KEY, DAILY_ACTIVITY_VERSION, dailyActivity)
-  }, [dailyActivity])
-
-  useEffect(() => {
-    saveVersioned(DAILY_PROGRESS_KEY, DAILY_PROGRESS_VERSION, dailyProgress)
-  }, [dailyProgress])
-
-  useEffect(() => {
     saveVersioned(ACTIVITY_LOG_KEY, ACTIVITY_LOG_VERSION, activityLog)
   }, [activityLog])
+
+  // dsa-prep:daily-activity and dsa-prep:daily-progress are gone - both were
+  // just a running fold over this log, so they're derived below instead of
+  // persisted. Clear out whatever an existing install still has on disk
+  // under those keys rather than leaving them as permanent dead weight.
+  useEffect(() => {
+    localStorage.removeItem(RETIRED_DAILY_ACTIVITY_KEY)
+    localStorage.removeItem(RETIRED_DAILY_PROGRESS_KEY)
+  }, [])
+
+  const dailyActivity = useMemo(() => dailyCountsFromLog(activityLog), [activityLog])
+  const todayCount = dailyActivity[todayKey(new Date())] ?? 0
 
   const recordAction = useCallback(
     (id: string, outcome: ReviewOutcome, transform: (record: ReviewRecord, now: Date) => ReviewRecord) => {
@@ -121,19 +85,7 @@ export function useReviewState() {
       const previousRecord = reviewState[id]
 
       setReviewState((prev) => ({ ...prev, [id]: transform(previousRecord ?? newRecord(now), now) }))
-      setDailyActivity((prev) => {
-        const key = todayKey(now)
-        return { ...prev, [key]: (prev[key] ?? 0) + 1 }
-      })
-      setDailyProgress((prev) => {
-        const key = todayKey(now)
-        const count = prev.date === key ? prev.count + 1 : 1
-        return { date: key, count }
-      })
-      setActivityLog((prev) => {
-        const next = [...prev, { problemId: id, outcome, timestamp: now.toISOString() }]
-        return next.length > ACTIVITY_LOG_MAX_ENTRIES ? next.slice(next.length - ACTIVITY_LOG_MAX_ENTRIES) : next
-      })
+      setActivityLog((prev) => [...prev, { problemId: id, outcome, timestamp: now.toISOString() }])
       setHistory((prev) => [...prev, { id, previousRecord }])
     },
     [reviewState],
@@ -173,22 +125,12 @@ export function useReviewState() {
       }
       return next
     })
-    setDailyProgress((prev) => ({ ...prev, count: Math.max(0, prev.count - 1) }))
-    setDailyActivity((prev) => {
-      const key = todayKey(new Date())
-      const current = prev[key] ?? 0
-      if (current <= 1) {
-        const next = { ...prev }
-        delete next[key]
-        return next
-      }
-      return { ...prev, [key]: current - 1 }
-    })
     // recordAction only ever appends, and undo only ever pops the current
     // top of `history` - so the entry to remove is always whatever's
-    // currently last, regardless of the cap in recordAction having trimmed
-    // the front of the array since. Repeated undo calls walk back through
-    // several consecutive actions this way, not just the most recent one.
+    // currently last. dailyActivity/todayCount fall back into sync
+    // automatically since they're derived from this log. Repeated undo
+    // calls walk back through several consecutive actions this way, not
+    // just the most recent one.
     setActivityLog((prev) => prev.slice(0, -1))
     setHistory((prev) => prev.slice(0, -1))
   }, [history])
@@ -205,7 +147,7 @@ export function useReviewState() {
     activityLog,
     reviewedCount,
     streak,
-    todayCount: dailyProgress.count,
+    todayCount,
     isReviewed,
     isDue,
     markReviewed,
