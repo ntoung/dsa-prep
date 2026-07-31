@@ -28,3 +28,7 @@ dist-ssr
 
 # Lavish review artifacts - ephemeral sign-off mockups, not product source
 .lavish/
+
+# Claude Code: per-machine settings and agent worktree checkouts, not project config
+.claude/settings.local.json
+.claude/worktrees/
